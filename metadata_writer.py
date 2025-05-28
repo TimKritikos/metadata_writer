@@ -35,10 +35,20 @@ class TextScrollCombo(tk.Frame):
     def get(c,a,b):
         return c.txt.get(a,b)
 
+class TitledEntry(tk.Frame):
+
+    def __init__(self, root_window, text, input_state, init_text):
+
+        super().__init__(root_window)
+
+        title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text))
+        tk.Label(self, text=text).pack(side=tk.LEFT)
+        title_entry.pack(fill=tk.X)
+
 #Got md5Checksum from someones blog https://www.joelverhagen.com/blog/2011/02/md5-hash-of-file-in-python/
 def md5Checksum(filePath):
     with open(filePath, 'rb') as fh:
-        m = hashlib.md5()
+        m = hashlib.sha512()
         while True:
             data = fh.read(8192)
             if not data:
@@ -48,6 +58,15 @@ def md5Checksum(filePath):
 
 def main(image_path):
 
+    data = {
+        "version": "v0.0-dev",
+        "title": "",
+        "capture_time_start": 0,
+        "capture_time_end": 0,
+        "image_sha512": md5Checksum(image_path),
+        "description": ""
+    }
+
     def save_and_exit():
         title = title_entry.get()
         description = description_entry.get("1.0",'end-1c')
@@ -56,7 +75,7 @@ def main(image_path):
             "title": title,
             "capture_time_start": int(time.mktime(time.strptime(timestamp_start.get(), '%Y-%m-%d %H:%M:%S'))),
             "capture_time_end": int(time.mktime(time.strptime(timestamp_end.get(), '%Y-%m-%d %H:%M:%S'))),
-            "image_md5": md5Checksum(image_path),
+            "image_sha512": md5Checksum(image_path),
             "description": description
         }
 
@@ -92,27 +111,29 @@ def main(image_path):
     timestamp_end.grid(row=0,column=3)
 
     # Input fields
-    title_frame=Frame(root)
-    title_entry = tk.Entry(title_frame)
-    tk.Label(title_frame, text="Title:").pack(side=tk.LEFT)
-    title_entry.pack(fill=tk.X)
 
     description=Frame(root)
     tk.Label(description, text="Description:").pack(side=tk.LEFT)
-    description_entry = TextScrollCombo(description,height=10)
+    description_entry = TextScrollCombo(description)
     description_entry.pack()
 
     description_entry.config(width=600, height=100)
+
+    title=TitledEntry(root,"Ttile",tk.NORMAL,"")
+    sha512sum=TitledEntry(root,"Image SHA512",tk.DISABLED,data["image_sha512"])
+    version=TitledEntry(root,"Version",tk.DISABLED,data["version"])
 
     # Save button
     save_button = tk.Button(root, text="Save and Exit", command=save_and_exit)
 
 
-    img_label                          .grid(row=0,column=0,rowspan=5,sticky='n')
-    title_frame                        .grid(row=0,column=1,sticky="we")
-    description                        .grid(row=2,column=1,sticky="we")
-    timestamp                          .grid(row=3,column=1,sticky="we")
-    save_button                        .grid(row=4,column=1)
+    img_label     .grid(row=0,column=0,rowspan=6,sticky='n')
+    title         .grid(row=0,column=1,sticky="we")
+    description   .grid(row=1,column=1,sticky="we")
+    timestamp     .grid(row=2,column=1,sticky="we")
+    sha512sum     .grid(row=3,column=1,sticky="we")
+    version       .grid(row=4,column=1,sticky="we")
+    save_button   .grid(row=5,column=1)
 
 
     root.mainloop()
