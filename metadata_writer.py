@@ -79,7 +79,7 @@ def main():
     img = Image.open(image_path)
     img.thumbnail((400, 400))  # Resize for display
     photo = ImageTk.PhotoImage(img)
-    img_label = tk.Label(root, image=photo, bg=background_color, x)
+    img_label = tk.Label(root, image=photo, bg=background_color)
 
     #Start/end timestamp fields
     timestamp=Frame(root)
