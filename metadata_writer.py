@@ -42,6 +42,7 @@ def main():
     from PIL import Image, ImageTk
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
+    import tkintermapview
 
     data = {
         "version": "v0.0-dev",
@@ -55,7 +56,9 @@ def main():
                         { "time": 1747012088, "text": "Metadata written" },
                         { "time": 1747876088, "text": "Metadata modified" },
                         { "time": 1759876088, "text": "Metadata version updated" }
-                        ]
+                        ],
+        "GPS_lat_dec_N": 51.500789280409016,
+        "GPS_long_dec_W": -0.12472196184719725
     }
 
     def save_and_exit():
@@ -79,7 +82,7 @@ def main():
     img = Image.open(image_path)
     img.thumbnail((400, 400))  # Resize for display
     photo = ImageTk.PhotoImage(img)
-    img_label = tk.Label(root, image=photo, bg=background_color, borderwidth=10)
+    img_label = tk.Label(root, image=photo, bg=background_color, borderwidth=15)
 
     #Start/end timestamp fields
     timestamp=Frame(root)
@@ -117,6 +120,13 @@ def main():
     # Save button
     save_button = tk.Button(root, text="Save and Exit", command=save_and_exit, bg=background_color)
 
+    map_frame=Frame(root)
+    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=15, bg_color=background_color)
+    map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
+    marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
+    map_widget.set_zoom(15)
+    map_widget.pack(pady=15)
+
     #Window layout
     img_label     .grid(row=0,column=0,rowspan=6,sticky='n')
     title         .grid(row=0,column=1,sticky="we")
@@ -125,7 +135,8 @@ def main():
     sha512sum     .grid(row=3,column=1,sticky="we")
     version       .grid(row=4,column=1,sticky="we")
     save_button   .grid(row=5,column=1)
-    timeline      .grid(row=6,column=0,columnspan=2)
+    map_frame    .grid(row=6,column=0)
+    timeline      .grid(row=7,column=0,columnspan=2)
 
     root.mainloop()
 
