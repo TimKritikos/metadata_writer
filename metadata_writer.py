@@ -24,8 +24,6 @@ import json
 from datetime import datetime
 import tkinter as tk
 
-background_color='#DDDDDD'
-
 def main():
     if len(sys.argv) < 2:
         print("Usage: python script.py path_to_image")
@@ -90,37 +88,34 @@ def main():
     # GUI setup
     root = tk.Tk()
     root.title("Metadata Writer")
-    root.configure(background=background_color)
+    background_color=root.cget('bg')
 
     # Load and display image
     img = Image.open(image_path)
     img.thumbnail((400, 400))  # Resize for display
     photo = ImageTk.PhotoImage(img)
-    img_label = tk.Label(root, image=photo, bg=background_color, borderwidth=15)
+    img_label = tk.Label(root, image=photo, borderwidth=15)
 
     editables=Frame()
-    editables.configure(background=background_color)
 
     #title field
     title=TitledEntry(editables,"Ttile",tk.NORMAL,"")
 
     #Description field
     description=Frame(editables)
-    tk.Label(description, text="Description:",bg=background_color).pack(side=tk.LEFT)
+    tk.Label(description, text="Description:").pack(side=tk.LEFT)
     description_entry = TextScrollCombo(description)
     description_entry.pack()
-    description.configure(bg=background_color)
     description_entry.config(width=600, height=100)
 
     #Start/end timestamp fields
     timestamp=Frame(editables)
-    timestamp.configure(bg=background_color)
     start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_start"])))
     end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
     timestamp_start = tk.Entry(timestamp,textvariable=start_var)
     timestamp_end = tk.Entry(timestamp,textvariable=end_var)
-    tk.Label(timestamp, text="Shot time/date start:", bg=background_color).grid(row=0,column=0)
-    tk.Label(timestamp, text="Shot time/date end:",bg=background_color).grid(row=0,column=2)
+    tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0)
+    tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2)
     timestamp_start.grid(row=0,column=1)
     timestamp_end.grid(row=0,column=3)
 
@@ -136,15 +131,14 @@ def main():
 
     # Map widget
     map_frame=Frame(root)
-    map_frame.configure(background=background_color)
-    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=15, bg_color=background_color)
+    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=15)
     map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     map_widget.set_zoom(15)
     map_widget.pack(pady=15)
 
     #timeline field
-    timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg)
+    timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
     timeline.configure(bg=background_color)
 
     #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
@@ -202,14 +196,13 @@ class TextScrollCombo(tk.Frame):
         self.grid_columnconfigure(0, weight=1)
 
         # create a Text widget
-        self.txt = tk.Text(self,height=10,bg=background_color)
+        self.txt = tk.Text(self,height=10)
         self.txt.grid(row=0, column=0, sticky="nsew")
 
         # create a Scrollbar and associate it with txt
-        scrollb = tk.Scrollbar(self, command=self.txt.yview,bg=background_color)
+        scrollb = tk.Scrollbar(self, command=self.txt.yview)
         scrollb.grid(row=0, column=1, sticky='nsew')
         self.txt['yscrollcommand'] = scrollb.set
-        self.configure(background=background_color)
 
     def get(c,a,b):
         return c.txt.get(a,b)
@@ -223,7 +216,7 @@ class TextScrollCombo(tk.Frame):
 #
 #        self.titled_dropdown = tk.OptionMenu(self,tk.StringVar(value=options[default_opt]),*options)
 #        self.titled_dropdown.config(width=8)
-#        tk.Label(self, text=text, bg=background_color).pack(side=tk.LEFT)
+#        tk.Label(self, text=text).pack(side=tk.LEFT)
 #        self.titled_dropdown.pack(fill=tk.X)
 #    def get(c):
 #        return c.titled_dropdown.get()
@@ -234,9 +227,8 @@ class TitledEntry(tk.Frame):
 
         super().__init__(root_window)
 
-        self.configure(background=background_color)
-        self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text),bg=background_color)
-        tk.Label(self, text=text, bg=background_color).pack(side=tk.LEFT)
+        self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text))
+        tk.Label(self, text=text).pack(side=tk.LEFT)
         self.title_entry.pack(fill=tk.X)
     def get(c):
         return c.title_entry.get()
@@ -247,7 +239,6 @@ class TitledTable(tk.Frame):
 
         super().__init__(root_window)
 
-        self.configure(background=background_color)
         header_=header.copy()
         del header_[0]
         self.treeview = ttk.Treeview(self,columns=(header_),height=3)
@@ -266,7 +257,7 @@ class TitledTable(tk.Frame):
                 self.treeview.column(header[i], width = widths[i], anchor=anchors[i])
 
 
-        self.scrollb = tk.Scrollbar(self, command=self.treeview.yview,bg=background_color)
+        self.scrollb = tk.Scrollbar(self, command=self.treeview.yview)
 
         self.utility_frame=tk.Frame(self)
         self.modify_button=tk.Button(self.utility_frame,text="Modify",width=8)
@@ -275,7 +266,7 @@ class TitledTable(tk.Frame):
         self.add_button.pack()
         self.modify_button.pack()
 
-        tk.Label(self, text=text, bg=background_color).grid(row=0,column=0,sticky="w")
+        tk.Label(self, text=text).grid(row=0,column=0,sticky="w")
         self.treeview.grid(row=1,column=0,sticky='we')
         self.scrollb.grid(row=1,column=1,sticky='ns')
         self.treeview['yscrollcommand'] = self.scrollb.set
@@ -284,7 +275,7 @@ class TitledTable(tk.Frame):
         return c.title_entry.get()
 
 
-def event_timeline(window,events,plt,np,FigureCanvasTkAgg):
+def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
     plot_line_width=0.8
 
     fig, ax = plt.subplots(figsize=(12, 1.8), constrained_layout=True)
