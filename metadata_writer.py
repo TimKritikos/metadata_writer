@@ -38,11 +38,20 @@ def main():
     import time
     from tkinter import messagebox
     from tkinter import Frame
+    from tkinter import ttk
     from tkcalendar import Calendar
     from PIL import Image, ImageTk
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
     import tkintermapview
+
+    light_data = {
+            "lights": [ { "id": 0, "brand":"",        "name": "other"     },
+                        { "id": 1, "brand":"",        "name": "Sun"       },
+                        { "id": 2, "brand":"Godox",   "name": "AD200 Pro" },
+                        { "id": 3, "brand":"Aputure", "name": "600D"      }
+                ]
+            }
 
     data = {
         "version": "v0.0-dev",
@@ -58,7 +67,12 @@ def main():
                         { "time": 1759876088, "text": "Metadata version updated" }
                         ],
         "GPS_lat_dec_N": 51.500789280409016,
-        "GPS_long_dec_W": -0.12472196184719725
+        "GPS_long_dec_W": -0.12472196184719725,
+        "lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
+                   { "source":3, "type":"continious", "Usage":"hair light" },
+                   { "source":1, "type":"continious", "Usage":"doing its thing" },
+                   { "source":0, "type":"continious", "Usage":"street light" }
+                   ]
     }
 
     def save_and_exit():
@@ -84,8 +98,22 @@ def main():
     photo = ImageTk.PhotoImage(img)
     img_label = tk.Label(root, image=photo, bg=background_color, borderwidth=15)
 
+    editables=Frame()
+    editables.configure(background=background_color)
+
+    #title field
+    title=TitledEntry(editables,"Ttile",tk.NORMAL,"")
+
+    #Description field
+    description=Frame(editables)
+    tk.Label(description, text="Description:",bg=background_color).pack(side=tk.LEFT)
+    description_entry = TextScrollCombo(description)
+    description_entry.pack()
+    description.configure(bg=background_color)
+    description_entry.config(width=600, height=100)
+
     #Start/end timestamp fields
-    timestamp=Frame(root)
+    timestamp=Frame(editables)
     timestamp.configure(bg=background_color)
     start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_start"])))
     end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
@@ -96,49 +124,55 @@ def main():
     timestamp_start.grid(row=0,column=1)
     timestamp_end.grid(row=0,column=3)
 
-    #Description field
-    description=Frame(root)
-    tk.Label(description, text="Description:",bg=background_color).pack(side=tk.LEFT)
-    description_entry = TextScrollCombo(description)
-    description_entry.pack()
-    description.configure(bg=background_color)
-    description_entry.config(width=600, height=100)
-
-    #title field
-    title=TitledEntry(root,"Ttile",tk.NORMAL,"")
 
     #sha512 field
-    sha512sum=TitledEntry(root,"Image SHA512",tk.DISABLED,data["image_sha512"])
+    sha512sum=TitledEntry(editables,"Image SHA512",tk.DISABLED,data["image_sha512"])
 
     #version field
-    version=TitledEntry(root,"Version",tk.DISABLED,data["version"])
-
-    #timeline field
-    timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg)
-    timeline.configure(bg=background_color)
+    version=TitledEntry(editables,"Version",tk.DISABLED,data["version"])
 
     # Save button
-    save_button = tk.Button(root, text="Save and Exit", command=save_and_exit, bg=background_color)
+    save_button = tk.Button(editables, text="Save and Exit", command=save_and_exit)
 
+    # Map widget
     map_frame=Frame(root)
+    map_frame.configure(background=background_color)
     map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=15, bg_color=background_color)
     map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     map_widget.set_zoom(15)
     map_widget.pack(pady=15)
 
+    #timeline field
+    timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg)
+    timeline.configure(bg=background_color)
+
     #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
 
+
+    #light table
+    table=[]
+    for item in data["lights"]:
+        for device in light_data["lights"]:
+            if device["id"] == item["source"]:
+                table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
+
+    light_table=TitledTable(editables,"List of lights / flashes used:",ttk,table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
+
+
     #Window layout
-    img_label     .grid(row=0,column=0,rowspan=6,sticky='n')
-    title         .grid(row=0,column=1,sticky="we")
-    description   .grid(row=1,column=1,sticky="we")
-    timestamp     .grid(row=2,column=1,sticky="we")
-    sha512sum     .grid(row=3,column=1,sticky="we")
-    version       .grid(row=4,column=1,sticky="we")
-    save_button   .grid(row=5,column=1)
-    map_frame     .grid(row=6,column=0)
-    timeline      .grid(row=7,column=0,columnspan=2)
+    img_label     .grid(row=0,column=0,sticky='n')
+    editables     .grid(row=0,column=1,rowspan=2,sticky='ns')
+    map_frame     .grid(row=1,column=0)
+    timeline      .grid(row=2,column=0,columnspan=2)
+
+    title         .grid(row=0,column=0,sticky="we",pady=(10,5))
+    description   .grid(row=1,column=0,sticky="we",pady=5)
+    timestamp     .grid(row=2,column=0,sticky="we",pady=5)
+    sha512sum     .grid(row=3,column=0,sticky="we",pady=5)
+    version       .grid(row=4,column=0,sticky="we",pady=5)
+    light_table   .grid(row=5,column=0,sticky="we",pady=5)
+    save_button   .grid(row=6,column=0,pady=(20,5))
 
     root.mainloop()
 
@@ -169,7 +203,7 @@ class TextScrollCombo(tk.Frame):
 
         # create a Text widget
         self.txt = tk.Text(self,height=10,bg=background_color)
-        self.txt.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+        self.txt.grid(row=0, column=0, sticky="nsew")
 
         # create a Scrollbar and associate it with txt
         scrollb = tk.Scrollbar(self, command=self.txt.yview,bg=background_color)
@@ -200,9 +234,52 @@ class TitledEntry(tk.Frame):
 
         super().__init__(root_window)
 
+        self.configure(background=background_color)
         self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text),bg=background_color)
         tk.Label(self, text=text, bg=background_color).pack(side=tk.LEFT)
         self.title_entry.pack(fill=tk.X)
+    def get(c):
+        return c.title_entry.get()
+
+class TitledTable(tk.Frame):
+
+    def __init__(self, root_window, text, ttk, table, header, widths, anchors):
+
+        super().__init__(root_window)
+
+        self.configure(background=background_color)
+        header_=header.copy()
+        del header_[0]
+        self.treeview = ttk.Treeview(self,columns=(header_),height=3)
+
+        for row in table:
+                row_=row.copy()
+                del row_[0]
+                self.treeview.insert("",tk.END,text=row[0],values=(row_))
+
+        for i in range(len(header)):
+            if i==0:
+                self.treeview.heading("#0", text=header[i])
+                self.treeview.column("#0", width = widths[i], anchor=anchors[i])
+            else:
+                self.treeview.heading(header[i], text=header[i])
+                self.treeview.column(header[i], width = widths[i], anchor=anchors[i])
+
+
+        self.scrollb = tk.Scrollbar(self, command=self.treeview.yview,bg=background_color)
+
+        self.utility_frame=tk.Frame(self)
+        self.modify_button=tk.Button(self.utility_frame,text="Modify",width=8)
+        self.add_button=tk.Button(self.utility_frame,text="Add",width=8)
+
+        self.add_button.pack()
+        self.modify_button.pack()
+
+        tk.Label(self, text=text, bg=background_color).grid(row=0,column=0,sticky="w")
+        self.treeview.grid(row=1,column=0,sticky='we')
+        self.scrollb.grid(row=1,column=1,sticky='ns')
+        self.treeview['yscrollcommand'] = self.scrollb.set
+        self.utility_frame.grid(row=1,column=2,sticky='n')
     def get(c):
         return c.title_entry.get()
 
