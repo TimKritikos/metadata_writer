@@ -100,7 +100,7 @@ def main():
     editables=Frame()
 
     #title field
-    title=TitledEntry(editables,"Ttile",tk.NORMAL,"")
+    title=TitledEntry(editables,"Ttile","",input_state=tk.NORMAL)
 
     #Description field
     description=Frame(editables)
@@ -122,12 +122,12 @@ def main():
 
 
     #sha512 field
-    sha512sum=TitledEntry(editables,"Image SHA512",tk.DISABLED,data["image_sha512"])
+    sha512sum=TitledEntry(editables,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
 
     #version field
     versions=Frame(editables)
-    program_version=TitledEntry(versions,"Program version",tk.DISABLED,data["program_version"],width=8)
-    data_spec_version=TitledEntry(versions,"Data specification version",tk.DISABLED,data["data_spec_version"],width=8)
+    program_version=TitledEntry(versions,"Program version",data["program_version"],width=8,input_state=tk.DISABLED)
+    data_spec_version=TitledEntry(versions,"Data specification version",data["data_spec_version"],width=8,input_state=tk.DISABLED)
     program_version.grid(row=0,column=0,padx=(0,5))
     data_spec_version.grid(row=0,column=1,padx=5)
 
@@ -228,7 +228,7 @@ class TextScrollCombo(tk.Frame):
 
 class TitledEntry(tk.Frame):
 
-    def __init__(self, root_window, text, input_state, init_text, width=None):
+    def __init__(self, root_window, text, init_text, input_state=tk.NORMAL, width=None):
 
         super().__init__(root_window)
 
