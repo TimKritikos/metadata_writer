@@ -52,7 +52,8 @@ def main():
             }
 
     data = {
-        "version": "v0.0-dev",
+        "program_version": "v0.0-dev",
+        "data_spec_version": "v0.0-dev",
         "title": "",
         "capture_time_start": 0,
         "capture_time_end": 0,
@@ -114,8 +115,8 @@ def main():
     end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
     timestamp_start = tk.Entry(timestamp,textvariable=start_var)
     timestamp_end = tk.Entry(timestamp,textvariable=end_var)
-    tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0)
-    tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2)
+    tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0,padx=(0,5))
+    tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2,padx=5)
     timestamp_start.grid(row=0,column=1)
     timestamp_end.grid(row=0,column=3)
 
@@ -124,14 +125,18 @@ def main():
     sha512sum=TitledEntry(editables,"Image SHA512",tk.DISABLED,data["image_sha512"])
 
     #version field
-    version=TitledEntry(editables,"Version",tk.DISABLED,data["version"])
+    versions=Frame(editables)
+    program_version=TitledEntry(versions,"Program version",tk.DISABLED,data["program_version"],width=8)
+    data_spec_version=TitledEntry(versions,"Data specification version",tk.DISABLED,data["data_spec_version"],width=8)
+    program_version.grid(row=0,column=0,padx=(0,5))
+    data_spec_version.grid(row=0,column=1,padx=5)
 
     # Save button
     save_button = tk.Button(editables, text="Save and Exit", command=save_and_exit)
 
     # Map widget
     map_frame=Frame(root)
-    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=15)
+    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=10)
     map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
     map_widget.set_zoom(15)
@@ -164,7 +169,7 @@ def main():
     description   .grid(row=1,column=0,sticky="we",pady=5)
     timestamp     .grid(row=2,column=0,sticky="we",pady=5)
     sha512sum     .grid(row=3,column=0,sticky="we",pady=5)
-    version       .grid(row=4,column=0,sticky="we",pady=5)
+    versions      .grid(row=4,column=0,sticky="we",pady=5)
     light_table   .grid(row=5,column=0,sticky="we",pady=5)
     save_button   .grid(row=6,column=0,pady=(20,5))
 
@@ -223,11 +228,12 @@ class TextScrollCombo(tk.Frame):
 
 class TitledEntry(tk.Frame):
 
-    def __init__(self, root_window, text, input_state, init_text):
+    def __init__(self, root_window, text, input_state, init_text, width=None):
 
         super().__init__(root_window)
 
-        self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text))
+        self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text),width=width)
+
         tk.Label(self, text=text).pack(side=tk.LEFT)
         self.title_entry.pack(fill=tk.X)
     def get(c):
