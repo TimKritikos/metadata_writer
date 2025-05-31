@@ -127,6 +127,8 @@ def main():
     map_widget.set_zoom(15)
     map_widget.pack(pady=15)
 
+    #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
+
     #Window layout
     img_label     .grid(row=0,column=0,rowspan=6,sticky='n')
     title         .grid(row=0,column=1,sticky="we")
@@ -135,7 +137,7 @@ def main():
     sha512sum     .grid(row=3,column=1,sticky="we")
     version       .grid(row=4,column=1,sticky="we")
     save_button   .grid(row=5,column=1)
-    map_frame    .grid(row=6,column=0)
+    map_frame     .grid(row=6,column=0)
     timeline      .grid(row=7,column=0,columnspan=2)
 
     root.mainloop()
@@ -178,6 +180,19 @@ class TextScrollCombo(tk.Frame):
     def get(c,a,b):
         return c.txt.get(a,b)
 
+#TODO: delete if unused before release
+#class TitledDropdown(tk.Frame):
+#
+#    def __init__(self, root_window, text, options, default_opt):
+#
+#        super().__init__(root_window)
+#
+#        self.titled_dropdown = tk.OptionMenu(self,tk.StringVar(value=options[default_opt]),*options)
+#        self.titled_dropdown.config(width=8)
+#        tk.Label(self, text=text, bg=background_color).pack(side=tk.LEFT)
+#        self.titled_dropdown.pack(fill=tk.X)
+#    def get(c):
+#        return c.titled_dropdown.get()
 
 class TitledEntry(tk.Frame):
 
