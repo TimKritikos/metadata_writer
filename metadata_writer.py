@@ -21,6 +21,7 @@
 import sys
 import hashlib
 import json
+import os
 from datetime import datetime
 import tkinter as tk
 
@@ -31,57 +32,88 @@ def main():
 
     image_path = sys.argv[1]
 
-    import matplotlib.pyplot
+    #import matplotlib.pyplot
     import numpy
     import time
     from tkinter import messagebox
     from tkinter import Frame
     from tkinter import ttk
-    from tkcalendar import Calendar
+    #from tkcalendar import Calendar
     from PIL import Image, ImageTk
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    #from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
-    import tkintermapview
+    #import tkintermapview
+    from pathlib import Path
 
-    light_data = {
-            "lights": [ { "id": 0, "brand":"",        "name": "other"     },
-                        { "id": 1, "brand":"",        "name": "Sun"       },
-                        { "id": 2, "brand":"Godox",   "name": "AD200 Pro" },
-                        { "id": 3, "brand":"Aputure", "name": "600D"      }
-                ]
+    device_data = {
+                "lights": [ { "id": 0, "brand":"",        "name": "other"     },
+                            { "id": 1, "brand":"",        "name": "Sun"       },
+                            { "id": 2, "brand":"Godox",   "name": "AD200 Pro" },
+                            { "id": 3, "brand":"Aputure", "name": "600D"      }
+                    ],
+                "cameras": [
+                            {
+                                "id": 0,
+                                "brand":"Unkown",
+                                "model":"unkown",
+                                "serial_number":None
+                            },{
+                                "id": 1,
+                                "brand":"Sony",
+                                "model":"ILCE7R4",
+                                "serial_number":"ThE_S3r4l_#"
+                            },{
+                                "id": 2,
+                                "brand":"Insta360",
+                                "model":"x3",
+                                "serial_number":"7777777777"
+                            }
+                    ]
             }
 
+
     data = {
-        "program_version": "v0.0-dev",
-        "data_spec_version": "v0.0-dev",
-        "title": "",
-        "capture_time_start": 0,
-        "capture_time_end": 0,
+        "program_version": "v0.0",
+        "data_spec_version": "v0.0",
+        "title": { "text" : "",
+                  "timestamp": 0
+                  },
+        #"capture_time_start": 0,
+        #"capture_time_end": 0,
         "image_sha512": sha512Checksum(image_path),
-        "description": "",
-            "events" : [{ "time": 1733055790, "text": "Data captured" },
-                        { "time": 1741745288, "text": "Raw file developed"},
-                        { "time": 1747012088, "text": "Metadata written" },
-                        { "time": 1747876088, "text": "Metadata modified" },
-                        { "time": 1759876088, "text": "Metadata version updated" }
-                        ],
-        "GPS_lat_dec_N": 51.500789280409016,
-        "GPS_long_dec_W": -0.12472196184719725,
-        "lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
-                   { "source":3, "type":"continious", "Usage":"hair light" },
-                   { "source":1, "type":"continious", "Usage":"doing its thing" },
-                   { "source":0, "type":"continious", "Usage":"street light" }
-                   ]
+        "image_filename": os.path.realpath(sys.argv[1]),
+        "description": {
+            "text" : "",
+            "timestamp" : 0
+            },
+        #    "events" : [{ "time": 1733055790, "text": "Data captured" },
+        #                { "time": 1741745288, "text": "Raw file developed"},
+        #                { "time": 1747012088, "text": "Metadata written" },
+        #                { "time": 1747876088, "text": "Metadata modified" },
+        #                { "time": 1759876088, "text": "Metadata version updated" }
+        #                ],
+        #"GPS_lat_dec_N": 51.500789280409016,
+        #"GPS_long_dec_W": -0.12472196184719725,
+        #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
+        #           { "source":3, "type":"continious", "Usage":"hair light" },
+        #           { "source":1, "type":"continious", "Usage":"doing its thing" },
+        #           { "source":0, "type":"continious", "Usage":"street light" }
+        #           ]
     }
 
     def save_and_exit():
+        update_timestamp=int(time.time())
         description_value = description_entry.get("1.0",'end-1c')
-        data["title"] = title.get()
-        data["capture_time_start"] = int(time.mktime(time.strptime(timestamp_start.get(), '%Y-%m-%d %H:%M:%S')))
-        data["capture_time_end"] = int(time.mktime(time.strptime(timestamp_end.get(), '%Y-%m-%d %H:%M:%S')))
-        data["description"] = description_value
+        data["title"]["text"] = title.get()
+        data["title"]["timestamp"] = update_timestamp
+        #data["capture_time_start"] = int(time.mktime(time.strptime(timestamp_start.get(), '%Y-%m-%d %H:%M:%S')))
+        #data["capture_time_end"] = int(time.mktime(time.strptime(timestamp_end.get(), '%Y-%m-%d %H:%M:%S')))
+        data["description"]["text"] = description_value
+        data["description"]["timestamp"] = update_timestamp
 
-        with open("output.json", "w") as f:
+        output_path = Path(data["image_filename"]).with_suffix(".json")
+
+        with open(output_path, "w") as f:
             json.dump(data, f, indent=4)
 
         root.destroy()
@@ -109,20 +141,21 @@ def main():
     description_entry.pack()
     description_entry.config(width=600, height=100)
 
-    #Start/end timestamp fields
-    timestamp=Frame(editables)
-    start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_start"])))
-    end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
-    timestamp_start = tk.Entry(timestamp,textvariable=start_var)
-    timestamp_end = tk.Entry(timestamp,textvariable=end_var)
-    tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0,padx=(0,5))
-    tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2,padx=5)
-    timestamp_start.grid(row=0,column=1)
-    timestamp_end.grid(row=0,column=3)
+    # #Start/end timestamp fields
+    # timestamp=Frame(editables)
+    # start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_start"])))
+    # end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
+    # timestamp_start = tk.Entry(timestamp,textvariable=start_var)
+    # timestamp_end = tk.Entry(timestamp,textvariable=end_var)
+    # tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0,padx=(0,5))
+    # tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2,padx=5)
+    # timestamp_start.grid(row=0,column=1)
+    # timestamp_end.grid(row=0,column=3)
 
 
     #sha512 field
     sha512sum=TitledEntry(editables,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
+    filename=TitledEntry(editables,"Image Filename",data["image_filename"],input_state=tk.DISABLED)
 
     #version field
     versions=Frame(editables)
@@ -134,44 +167,45 @@ def main():
     # Save button
     save_button = tk.Button(editables, text="Save and Exit", command=save_and_exit)
 
-    # Map widget
-    map_frame=Frame(root)
-    map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=10)
-    map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
-    marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
-    map_widget.set_zoom(15)
-    map_widget.pack(pady=15)
+    # # Map widget
+    # map_frame=Frame(root)
+    # map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=10)
+    # map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
+    # marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
+    # map_widget.set_zoom(15)
+    # map_widget.pack(pady=15)
 
-    #timeline field
-    timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
-    timeline.configure(bg=background_color)
+    # #timeline field
+    # timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
+    # timeline.configure(bg=background_color)
 
     #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
 
 
-    #light table
-    table=[]
-    for item in data["lights"]:
-        for device in light_data["lights"]:
-            if device["id"] == item["source"]:
-                table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
+    # #light table
+    # table=[]
+    # for item in data["lights"]:
+    #     for device in device_data["lights"]:
+    #         if device["id"] == item["source"]:
+    #             table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
 
-    light_table=TitledTable(editables,"List of lights / flashes used:",ttk,table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
+    # light_table=TitledTable(editables,"List of lights / flashes used:",ttk,table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
 
 
     #Window layout
     img_label     .grid(row=0,column=0,sticky='n')
     editables     .grid(row=0,column=1,rowspan=2,sticky='ns')
-    map_frame     .grid(row=1,column=0)
-    timeline      .grid(row=2,column=0,columnspan=2)
+    # map_frame     .grid(row=1,column=0)
+    # timeline      .grid(row=2,column=0,columnspan=2)
 
     title         .grid(row=0,column=0,sticky="we",pady=(10,5))
     description   .grid(row=1,column=0,sticky="we",pady=5)
-    timestamp     .grid(row=2,column=0,sticky="we",pady=5)
+    # timestamp     .grid(row=2,column=0,sticky="we",pady=5)
     sha512sum     .grid(row=3,column=0,sticky="we",pady=5)
-    versions      .grid(row=4,column=0,sticky="we",pady=5)
-    light_table   .grid(row=5,column=0,sticky="we",pady=5)
-    save_button   .grid(row=6,column=0,pady=(20,5))
+    filename      .grid(row=4,column=0,sticky="we",pady=5)
+    versions      .grid(row=5,column=0,sticky="we",pady=5)
+    # light_table   .grid(row=6,column=0,sticky="we",pady=5)
+    save_button   .grid(row=7,column=0,pady=(20,5))
 
     root.mainloop()
 
