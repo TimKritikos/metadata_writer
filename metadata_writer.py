@@ -17,6 +17,10 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
+#TODO:
+#Weather image is cropped
+#Make save button red if any data is inparsable
+
 #import stuff that's needed for both gui and check mode plus tkinter to make inheritance easier (for now)
 import sys
 import hashlib
@@ -24,6 +28,7 @@ import json
 import os
 from datetime import datetime
 import tkinter as tk
+from tkinter import ttk
 
 def main():
     if len(sys.argv) < 2:
@@ -32,18 +37,21 @@ def main():
 
     image_path = sys.argv[1]
 
-    #import matplotlib.pyplot
+    import matplotlib.pyplot
     import numpy
     import time
     from tkinter import messagebox
     from tkinter import Frame
-    from tkinter import ttk
-    #from tkcalendar import Calendar
+    from tkcalendar import Calendar
     from PIL import Image, ImageTk
-    #from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from PIL.ExifTags import TAGS
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
+    from datetime import datetime
     #import tkintermapview
     from pathlib import Path
+    from exif import Image as exifImage
+    from fractions import Fraction
 
     device_data = {
                 "lights": [ { "id": 0, "brand":"",        "name": "other"     },
@@ -71,29 +79,56 @@ def main():
                     ]
             }
 
+    #Get current timestamp
+    current_event_timestamp=int(time.time())
 
+    #Get exif from image file
+    image = Image.open(image_path)
+    exif_data = image._getexif()
+
+    shutter_speed_apex = None
+    exposure_time = None
+    create_datetime= None
+
+    for tag_id, value in exif_data.items():
+        tag = TAGS.get(tag_id, tag_id)
+        if tag == 'ExposureTime':
+            exposure_time = float(Fraction(value))
+        elif tag == 'DateTimeOriginal':
+            dt_str = value
+            dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
+            create_datetime=int(dt.timestamp())  # Unix epoch time
+
+    #JSON output template
     data = {
-        "program_version": "v0.0",
-        "data_spec_version": "v0.0",
-        "title": { "text" : "",
-                  "timestamp": 0
-                  },
-        #"capture_time_start": 0,
-        #"capture_time_end": 0,
-        "image_sha512": sha512Checksum(image_path),
-        "image_filename": os.path.realpath(sys.argv[1]),
+        "program_version": "v1.0-dev",
+        "data_spec_version": "v1.0-dev",
+
+        "title": {
+            "text" : "",
+            "event_id" : -1
+        },
         "description": {
             "text" : "",
-            "timestamp" : 0
-            },
-        #    "events" : [{ "time": 1733055790, "text": "Data captured" },
-        #                { "time": 1741745288, "text": "Raw file developed"},
-        #                { "time": 1747012088, "text": "Metadata written" },
-        #                { "time": 1747876088, "text": "Metadata modified" },
-        #                { "time": 1759876088, "text": "Metadata version updated" }
-        #                ],
+            "event_id" : -1
+        },
+        "capture_duration_seconds": exposure_time,
+        "single_capture_picture": True,
+
+        "image_sha512": sha512Checksum(image_path),
+        "image_filename": os.path.realpath(sys.argv[1]),
+        "capture_start_on_original_metadata_ts": create_datetime,
+        "capture_start_time_offset": 0,
+
+        "events" : [{ "event_id":0, "event_type": "capture_start",         "time": 0, "text": "" },
+                    #{ "event_id":2, "event_type": "data_modification",     "time": 1741745288, "text": "Raw file developed"},
+                    { "event_id":1, "event_type": "metadata_modification", "time": current_event_timestamp, "text": "Initial metadata written" },
+                    #{ "event_id":5, "event_type": "version_upgrade",       "time": 1759876088, "text": "Metadata version updated" }
+                    ],
+
         #"GPS_lat_dec_N": 51.500789280409016,
         #"GPS_long_dec_W": -0.12472196184719725,
+
         #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
         #           { "source":3, "type":"continious", "Usage":"hair light" },
         #           { "source":1, "type":"continious", "Usage":"doing its thing" },
@@ -101,15 +136,22 @@ def main():
         #           ]
     }
 
+
     def save_and_exit():
-        update_timestamp=int(time.time())
-        description_value = description_entry.get("1.0",'end-1c')
+        try:
+            attribution_event=int(event_attribution.get().split()[2])
+        except ValueError as e:
+            print("Error: internal error getting event id for save")
+            return -1
+
         data["title"]["text"] = title.get()
-        data["title"]["timestamp"] = update_timestamp
-        #data["capture_time_start"] = int(time.mktime(time.strptime(timestamp_start.get(), '%Y-%m-%d %H:%M:%S')))
-        #data["capture_time_end"] = int(time.mktime(time.strptime(timestamp_end.get(), '%Y-%m-%d %H:%M:%S')))
-        data["description"]["text"] = description_value
-        data["description"]["timestamp"] = update_timestamp
+        data["title"]["event_id"] = attribution_event
+        data["description"]["text"] = description.get("1.0",'end-1c')
+        data["description"]["event_id"] = attribution_event
+        data["single_capture_picture"] = one_capture_var.get()
+        data["capture_start_time_offset"] = float(cap_offset_var.get())
+        data["capture_duration_seconds"] = float(cap_duration_var.get())
+        data["events"][0]["time"] = int(data["capture_start_time_offset"])+int(data["capture_start_on_original_metadata_ts"])
 
         output_path = Path(data["image_filename"]).with_suffix(".json")
 
@@ -123,51 +165,134 @@ def main():
     root.title("Metadata Writer")
     background_color=root.cget('bg')
 
-    # Load and display image
-    img = Image.open(image_path)
-    img.thumbnail((400, 400))  # Resize for display
-    photo = ImageTk.PhotoImage(img)
-    img_label = tk.Label(root, image=photo, borderwidth=15)
 
     editables=Frame()
 
-    #title field
-    title=TitledEntry(editables,"Ttile","",input_state=tk.NORMAL)
+    #################
+    # display image #
+    #################
+    display_image_frame=TitledFrame(root, "Image" )
+    img = Image.open(image_path)
+    img.thumbnail((400, 400))  # Resize for display
+    photo = ImageTk.PhotoImage(img)
+    img_label = tk.Label(display_image_frame, image=photo, borderwidth=4)
 
-    #Description field
-    description=Frame(editables)
-    tk.Label(description, text="Description:").pack(side=tk.LEFT)
-    description_entry = TextScrollCombo(description)
-    description_entry.pack()
-    description_entry.config(width=600, height=100)
+    img_label.grid(row=0,column=0)
 
-    # #Start/end timestamp fields
-    # timestamp=Frame(editables)
-    # start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_start"])))
-    # end_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', localtime(data["capture_time_end"])))
-    # timestamp_start = tk.Entry(timestamp,textvariable=start_var)
-    # timestamp_end = tk.Entry(timestamp,textvariable=end_var)
-    # tk.Label(timestamp, text="Shot time/date start:").grid(row=0,column=0,padx=(0,5))
-    # tk.Label(timestamp, text="Shot time/date end:").grid(row=0,column=2,padx=5)
-    # timestamp_start.grid(row=0,column=1)
-    # timestamp_end.grid(row=0,column=3)
+    #########
+    # Texts #
+    #########
+    texts_frame=TitledFrame(editables,"[1] Texts")
+
+    title = TitledEntry(texts_frame,"Ttile","",input_state=tk.NORMAL)
+    description = TextScrollCombo(texts_frame,"Description:")
+
+    title.grid       (row=0,column=0,sticky='we',padx=3,pady=3)
+    description.grid (row=1,column=0,sticky='we',padx=3,pady=3)
+    texts_frame.grid_columnconfigure(0, weight=1)
+
+    #############
+    # Timestamp #
+    #############
+    timestamp=TitledFrame(editables,"[2] Timestamp")
+
+    #Callback for updating the explanation
+    def update_timestamp_description(*args):
+        date_value = cap_start_var.get()
+        duration_value = cap_duration.get()
+        check_value = one_capture_var.get()
+
+        try:
+            duration_value=str(float(duration_value))
+            date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_start_on_original_metadata_ts"]+int(cap_offset_var.get())))
+            if check_value == False:
+                explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " +  date + " and took " + str(duration_value) + " seconds to capture" )
+            else:
+                explanation_var.set("An image taken at " + date + " with a "+str(duration_value)+" second shutter speed")
+            explanation.config(bg="grey64")
+        except ValueError as e:
+            explanation_var.set("Invalid vlaues!")
+            explanation.config(bg="red")
+
+    # explanation text
+    explanation_var = tk.StringVar()
+    explanation = tk.Label(timestamp, textvariable=explanation_var, wraplength=450)
+    explanation.config(width=70)
+
+    # Original capture date
+    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_start_on_original_metadata_ts"]) )) #TODO: don't hardcode these values
+    #cap_start_var.trace_add("write", update_timestamp_description)
+    cap_start_label=tk.Label(timestamp, text="Original capture start date:")
+    cap_start = tk.Entry(timestamp,textvariable=cap_start_var,state=tk.DISABLED)#,state=tk.DISABLED)
+
+    # Capture date offset
+    cap_offset_var = tk.StringVar(value=data["capture_start_time_offset"]) #TODO: don't hardcode these values
+    cap_offset_var.trace_add("write", update_timestamp_description)
+    cap_offset_label=tk.Label(timestamp, text="Capture start date offset seconds:")
+    cap_offset = tk.Entry(timestamp,textvariable=cap_offset_var)#,state=tk.DISABLED)
+
+    # Capture duration
+    cap_duration_var = tk.StringVar(value=str(data["capture_duration_seconds"]))
+    cap_duration_var.trace_add("write", update_timestamp_description)
+    cap_duration_label=tk.Label(timestamp, text="Capture duration (seconds):")
+    cap_duration = tk.Entry(timestamp,textvariable=cap_duration_var)#,state=tk.DISABLED)
+
+    # One shot checkbox
+    one_capture_var = tk.BooleanVar()
+    one_capture_var.trace_add( "write", update_timestamp_description)
+    one_capture = tk.Checkbutton(timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
+    one_capture.select() #this also calles update_timestamp_description. If removed place a call to it to write the inital value on the text box
 
 
-    #sha512 field
-    sha512sum=TitledEntry(editables,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
-    filename=TitledEntry(editables,"Image Filename",data["image_filename"],input_state=tk.DISABLED)
+    cap_start_label.grid     (row=0,column=0,padx=3,pady=3)
+    cap_start.grid           (row=0,column=1,padx=3,pady=3)
+    cap_duration_label.grid  (row=0,column=2,padx=3,pady=3)
+    cap_duration.grid        (row=0,column=3,padx=3,pady=3)
+    cap_offset_label.grid    (row=1,column=0,padx=3,pady=3)
+    cap_offset.grid          (row=1,column=1,padx=3,pady=3)
+    one_capture.grid         (row=1,column=2,padx=3,pady=3,columnspan=2)
+    explanation.grid         (row=2,column=0,padx=3,pady=3,columnspan=4)
 
-    #version field
-    versions=Frame(editables)
-    program_version=TitledEntry(versions,"Program version",data["program_version"],width=8,input_state=tk.DISABLED)
-    data_spec_version=TitledEntry(versions,"Data specification version",data["data_spec_version"],width=8,input_state=tk.DISABLED)
-    program_version.grid(row=0,column=0,padx=(0,5))
-    data_spec_version.grid(row=0,column=1,padx=5)
+    #############
+    # Constants #
+    #############
+    constants_frame=TitledFrame(editables,"Constants")
 
-    # Save button
-    save_button = tk.Button(editables, text="Save and Exit", command=save_and_exit)
+    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
+    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
+    filename=TitledEntry(constants_frame,"Image Filename",data["image_filename"],input_state=tk.DISABLED)
+    program_version=TitledEntry(constants_frame,"Program version",data["program_version"],width=8,input_state=tk.DISABLED)
+    data_spec_version=TitledEntry(constants_frame,"Data specification version",data["data_spec_version"],width=8,input_state=tk.DISABLED)
 
-    # # Map widget
+    filename.grid          (row=0,column=0,padx=3,pady=3,columnspan=2,sticky='we')
+    sha512sum.grid         (row=1,column=0,padx=3,pady=3,columnspan=2,sticky='we')
+    program_version.grid   (row=2,column=0,padx=3,pady=3,sticky='we')
+    data_spec_version.grid (row=2,column=1,padx=3,pady=3,sticky='we')
+    constants_frame.grid_columnconfigure(0, weight=1)
+    constants_frame.grid_columnconfigure(1, weight=1)
+
+    ########
+    # Save #
+    ########
+    save_frame=TitledFrame(editables,"[3] Save")
+    save_button = tk.Button(save_frame, text="Save and Exit", command=save_and_exit)
+    save_button.config(bg='green')
+
+    event_list=[]
+    for item in data["events"]:
+            if item["event_type"] == "metadata_modification":
+                event_list.append("event id "+str(item["event_id"])+" : "+item["text"])
+
+    event_attribution=TitledDropdown(save_frame,"Metadata change event attribution:",event_list,0)
+
+    event_attribution.grid (row=0,column=0,padx=3,pady=3,sticky='we')
+    save_button.grid       (row=0,column=1,padx=3,pady=3)
+    #save_button.grid       (row=0,column=1,padx=3,pady=3,sticky='e')
+    save_frame.grid_columnconfigure(0, weight=1)
+
+    # ##############
+    # # Map widget #
+    # ##############
     # map_frame=Frame(root)
     # map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=10)
     # map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
@@ -175,12 +300,34 @@ def main():
     # map_widget.set_zoom(15)
     # map_widget.pack(pady=15)
 
-    # #timeline field
-    # timeline = event_timeline(root,data["events"],matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
-    # timeline.configure(bg=background_color)
+    ##################
+    # timeline field #
+    ##################
+    def events_to_tags(json_events):
+        capture_start=-1
+        return_data=[]
+        for item in json_events:
+            if item["event_type"] == "capture_start":
+                capture_start=item["time"]
+            else:
+                return_data.append({"time":item["time"],"text":item["text"]})
+                return_data.append({"time":capture_start,"text":"Captured data"})
+        return return_data
 
+    timeline_frame=TitledFrame(root,"Timeline")
+    timeline = event_timeline(timeline_frame,events_to_tags(data["events"]),matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
+    timeline.configure(bg=background_color)
+    timeline.grid(row=0,column=0)
+
+
+    ###################
+    # Media aqusition #
+    ###################
     #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
 
+    ##########
+    # Lights #
+    ##########
 
     # #light table
     # table=[]
@@ -189,23 +336,21 @@ def main():
     #         if device["id"] == item["source"]:
     #             table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
 
-    # light_table=TitledTable(editables,"List of lights / flashes used:",ttk,table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
+    # light_table=TitledTable(editables,"List of lights / flashes used:",table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
 
 
-    #Window layout
-    img_label     .grid(row=0,column=0,sticky='n')
-    editables     .grid(row=0,column=1,rowspan=2,sticky='ns')
-    # map_frame     .grid(row=1,column=0)
-    # timeline      .grid(row=2,column=0,columnspan=2)
+    #Root frame layout
+    display_image_frame          .grid(row=0,column=0,sticky='n')
+    editables          .grid(row=0,column=1,rowspan=2,sticky='ns')
+    # map_frame          .grid(row=1,column=0)
+    timeline_frame        .grid(row=2,column=0,columnspan=2)
 
-    title         .grid(row=0,column=0,sticky="we",pady=(10,5))
-    description   .grid(row=1,column=0,sticky="we",pady=5)
-    # timestamp     .grid(row=2,column=0,sticky="we",pady=5)
-    sha512sum     .grid(row=3,column=0,sticky="we",pady=5)
-    filename      .grid(row=4,column=0,sticky="we",pady=5)
-    versions      .grid(row=5,column=0,sticky="we",pady=5)
-    # light_table   .grid(row=6,column=0,sticky="we",pady=5)
-    save_button   .grid(row=7,column=0,pady=(20,5))
+    #editables frame layout
+    texts_frame     .grid(row=0,column=0,sticky="we",pady=5)
+    timestamp       .grid(row=1,column=0,sticky="we",pady=5)
+    constants_frame .grid(row=2,column=0,sticky="we",pady=5)
+    # light_table        .grid(row=6,column=0,sticky="we",pady=5)
+    save_frame      .grid(row=3,column=0,sticky="we",pady=5)
 
     root.mainloop()
 
@@ -224,41 +369,43 @@ def sha512Checksum(filePath):
 #Got TextScrollCombo from stack overflow https://stackoverflow.com/questions/13832720/how-to-attach-a-scrollbar-to-a-text-widget
 class TextScrollCombo(tk.Frame):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, root_window, title):
 
-        super().__init__(*args, **kwargs)
+        super().__init__(root_window)
 
-        # ensure a consistent GUI size
-        self.grid_propagate(False)
         # implement stretchability
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # create a Text widget
         self.txt = tk.Text(self,height=10)
-        self.txt.grid(row=0, column=0, sticky="nsew")
+        self.txt.config(height=5)
+
+        tk.Label(self, text=title).grid(row=0, column=0, sticky="w")
+        self.txt.grid(row=1, column=0, sticky="we")
 
         # create a Scrollbar and associate it with txt
         scrollb = tk.Scrollbar(self, command=self.txt.yview)
-        scrollb.grid(row=0, column=1, sticky='nsew')
+        scrollb.grid(row=1, column=1, sticky='nsew')
         self.txt['yscrollcommand'] = scrollb.set
 
     def get(c,a,b):
         return c.txt.get(a,b)
 
-#TODO: delete if unused before release
-#class TitledDropdown(tk.Frame):
-#
-#    def __init__(self, root_window, text, options, default_opt):
-#
-#        super().__init__(root_window)
-#
-#        self.titled_dropdown = tk.OptionMenu(self,tk.StringVar(value=options[default_opt]),*options)
-#        self.titled_dropdown.config(width=8)
-#        tk.Label(self, text=text).pack(side=tk.LEFT)
-#        self.titled_dropdown.pack(fill=tk.X)
-#    def get(c):
-#        return c.titled_dropdown.get()
+class TitledDropdown(tk.Frame):
+
+    def __init__(self, root_window, text, options, default_opt):
+
+        super().__init__(root_window)
+
+        self.titled_dropdown = ttk.Combobox(self,value=options)
+        self.titled_dropdown.set(options[default_opt])
+        self.titled_dropdown.config(width=8)
+        tk.Label(self, text=text).grid (row=0,column=0,sticky='w')
+        self.titled_dropdown.grid      (row=0,column=1,sticky='we')
+        self.grid_columnconfigure(1, weight=1)
+    def get(c):
+        return c.titled_dropdown.get()
 
 class TitledEntry(tk.Frame):
 
@@ -268,14 +415,16 @@ class TitledEntry(tk.Frame):
 
         self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text),width=width)
 
-        tk.Label(self, text=text).pack(side=tk.LEFT)
-        self.title_entry.pack(fill=tk.X)
+        self.label=tk.Label(self, text=text)
+        self.label.grid(row=0,column=0,sticky='w')
+        self.title_entry.grid(row=0,column=1,sticky='we')
+        self.grid_columnconfigure(1, weight=1)
     def get(c):
         return c.title_entry.get()
 
 class TitledTable(tk.Frame):
 
-    def __init__(self, root_window, text, ttk, table, header, widths, anchors):
+    def __init__(self, root_window, text, table, header, widths, anchors):
 
         super().__init__(root_window)
 
@@ -354,6 +503,11 @@ def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
     plt.close()
 
     return canvas.get_tk_widget()
+
+def TitledFrame(root,title):
+    frame=ttk.LabelFrame(root,text=title,padding=2,borderwidth=4,relief="ridge")
+    return frame
+
 
 if __name__ == "__main__":
     main()
