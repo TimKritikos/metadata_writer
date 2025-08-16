@@ -171,7 +171,7 @@ def main():
     #################
     # display image #
     #################
-    display_image_frame=TitledFrame(root, "Image" )
+    display_image_frame=TitledFrame(root, [("Image", ("TkDefaultFont", 10))] )
     img = Image.open(image_path)
     img.thumbnail((400, 400))  # Resize for display
     photo = ImageTk.PhotoImage(img)
@@ -182,7 +182,7 @@ def main():
     #########
     # Texts #
     #########
-    texts_frame=TitledFrame(editables,"[1] Texts")
+    texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
     title = TitledEntry(texts_frame,"Ttile","",input_state=tk.NORMAL)
     description = TextScrollCombo(texts_frame,"Description:")
@@ -194,7 +194,7 @@ def main():
     #############
     # Timestamp #
     #############
-    timestamp=TitledFrame(editables,"[2] Timestamp")
+    timestamp=TitledFrame(editables,[("[2]", ("TkDefaultFont", 12, "bold")),("Timestamp", ("TkDefaultFont", 10))])
 
     #Callback for updating the explanation
     def update_timestamp_description(*args):
@@ -256,7 +256,7 @@ def main():
     #############
     # Constants #
     #############
-    constants_frame=TitledFrame(editables,"Constants")
+    constants_frame=TitledFrame(editables,[("Constants", ("TkDefaultFont", 10))])
 
     sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
     sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
@@ -274,7 +274,7 @@ def main():
     ########
     # Save #
     ########
-    save_frame=TitledFrame(editables,"[3] Save")
+    save_frame=TitledFrame(editables,[("[3]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
     save_button = tk.Button(save_frame, text="Save and Exit", command=save_and_exit)
     save_button.config(bg='green')
 
@@ -314,7 +314,7 @@ def main():
                 return_data.append({"time":capture_start,"text":"Captured data"})
         return return_data
 
-    timeline_frame=TitledFrame(root,"Timeline")
+    timeline_frame=TitledFrame(root,[("Timeline", ("TkDefaultFont", 10))])
     timeline = event_timeline(timeline_frame,events_to_tags(data["events"]),matplotlib.pyplot,numpy,FigureCanvasTkAgg,background_color)
     timeline.configure(bg=background_color)
     timeline.grid(row=0,column=0)
@@ -348,9 +348,9 @@ def main():
     #editables frame layout
     texts_frame     .grid(row=0,column=0,sticky="we",pady=5)
     timestamp       .grid(row=1,column=0,sticky="we",pady=5)
-    constants_frame .grid(row=2,column=0,sticky="we",pady=5)
+    save_frame      .grid(row=2,column=0,sticky="we",pady=5)
+    constants_frame .grid(row=3,column=0,sticky="we",pady=5)
     # light_table        .grid(row=6,column=0,sticky="we",pady=5)
-    save_frame      .grid(row=3,column=0,sticky="we",pady=5)
 
     root.mainloop()
 
@@ -504,9 +504,13 @@ def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
 
     return canvas.get_tk_widget()
 
-def TitledFrame(root,title):
-    frame=ttk.LabelFrame(root,text=title,padding=2,borderwidth=4,relief="ridge")
-    return frame
+def TitledFrame(root, title_parts):
+    lf = ttk.Labelframe(root, padding=2,borderwidth=4,relief="ridge")
+    title = ttk.Frame(lf)
+    for text, font in title_parts:
+        ttk.Label(title, text=text, font=font).pack(side="left")
+    lf.configure(labelwidget=title)  # managed by the labelframe itself
+    return lf
 
 
 if __name__ == "__main__":
