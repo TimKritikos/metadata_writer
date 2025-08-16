@@ -104,31 +104,29 @@ def main():
         "program_version": "v1.0-dev",
         "data_spec_version": "v1.0-dev",
 
-        "title": {
-            "text" : "",
+        "texts": {
+            "title" : "",
+            "description" : "",
             "event_id" : -1
         },
-        "description": {
-            "text" : "",
+        "capture_timestamp": {
+            "capture_start_on_original_metadata_timestamp": create_datetime,
+            "capture_duration_seconds": exposure_time,
+            "single_capture_picture": True,
+            "capture_start_time_offset_seconds": 0,
             "event_id" : -1
         },
-        "capture_duration_seconds": exposure_time,
-        "single_capture_picture": True,
-
-        "image_sha512": sha512Checksum(image_path),
-        "image_filename": os.path.realpath(sys.argv[1]),
-        "capture_start_on_original_metadata_ts": create_datetime,
-        "capture_start_time_offset": 0,
-
-        "events" : [{ "event_id":0, "event_type": "capture_start",         "time": 0, "text": "" },
-                    #{ "event_id":2, "event_type": "data_modification",     "time": 1741745288, "text": "Raw file developed"},
-                    { "event_id":1, "event_type": "metadata_modification", "time": current_event_timestamp, "text": "Initial metadata written" },
-                    #{ "event_id":5, "event_type": "version_upgrade",       "time": 1759876088, "text": "Metadata version updated" }
+        "constants": {
+            "image_sha512": sha512Checksum(image_path),
+            "image_file_full_path": os.path.realpath(sys.argv[1])
+        },
+        "events" : [{ "event_id":0, "event_type": "capture_start",         "timestamp": 0, "timestamp_accuracy_seconds": 0, "text": "" },
+                    #{ "event_id":2, "event_type": "data_modification",     "timestamp": 1741745288, "text": "Raw file developed"},
+                    { "event_id":1, "event_type": "metadata_modification", "timestamp": current_event_timestamp, "timestamp_accuracy_seconds": 0, "text": "Initial metadata written" },
+                    #{ "event_id":5, "event_type": "version_upgrade",       "timestamp": 1759876088, "text": "Metadata version updated" }
                     ],
-
         #"GPS_lat_dec_N": 51.500789280409016,
         #"GPS_long_dec_W": -0.12472196184719725,
-
         #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
         #           { "source":3, "type":"continuous", "Usage":"hair light" },
         #           { "source":1, "type":"continuous", "Usage":"doing its thing" },
@@ -144,16 +142,20 @@ def main():
             print("Error: internal error getting event id for save")
             return -1
 
-        data["title"]["text"] = title.get()
-        data["title"]["event_id"] = attribution_event
-        data["description"]["text"] = description.get("1.0",'end-1c')
-        data["description"]["event_id"] = attribution_event
-        data["single_capture_picture"] = one_capture_var.get()
-        data["capture_start_time_offset"] = float(cap_offset_var.get())
-        data["capture_duration_seconds"] = float(cap_duration_var.get())
-        data["events"][0]["time"] = int(data["capture_start_time_offset"])+int(data["capture_start_on_original_metadata_ts"])  #TODO: don't hardcode this values
+        #Texts
+        data["texts"]["title"] = title.get()
+        data["texts"]["description"] = description.get("1.0",'end-1c')
+        data["texts"]["event_id"] = attribution_event
 
-        output_path = Path(data["image_filename"]).with_suffix(".json")
+        #Capture Timestamp
+        data["capture_timestamp"]["capture_duration_seconds"] = float(cap_duration_var.get())
+        data["capture_timestamp"]["single_capture_picture"] = one_capture_var.get()
+        data["capture_timestamp"]["capture_start_time_offset_seconds"] = float(cap_offset_var.get())
+        data["capture_timestamp"]["event_id"] = attribution_event
+        data["events"][0]["timestamp"] = int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"])  #TODO: don't hardcode this values
+        data["events"][0]["timestamp_accuracy_seconds"] = int(cap_accuracy_var.get())  #TODO: don't hardcode this values
+
+        output_path = Path(data["constants"]["image_file_full_path"]).with_suffix(".json")
 
         with open(output_path, "w") as f:
             json.dump(data, f, indent=4)
@@ -191,24 +193,32 @@ def main():
     description.grid (row=1,column=0,sticky='we',padx=3,pady=3)
     texts_frame.grid_columnconfigure(0, weight=1)
 
-    #############
-    # Timestamp #
-    #############
-    timestamp=TitledFrame(editables,[("[2]", ("TkDefaultFont", 12, "bold")),("Timestamp", ("TkDefaultFont", 10))])
+    #####################
+    # Capture timestamp #
+    #####################
+    capture_timestamp=TitledFrame(editables,[("[2]", ("TkDefaultFont", 12, "bold")),("Capture timestamp", ("TkDefaultFont", 10))])
 
     #Callback for updating the explanation
-    def update_timestamp_description(*args):
+    def update_capture_timestamp_description(*args):
         date_value = cap_start_var.get()
         duration_value = cap_duration.get()
         check_value = one_capture_var.get()
+        accuracy=cap_accuracy_var.get()
 
         try:
             duration_value=str(float(duration_value))
-            date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_start_on_original_metadata_ts"]+int(cap_offset_var.get())))
-            if check_value == False:
-                explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " +  date + " and took " + str(duration_value) + " seconds to capture" )
+            accuracy=float(accuracy)
+            date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]+int(cap_offset_var.get())))
+
+            if accuracy != 0.0:
+                acc_string=" plus/minus "+str(accuracy)+" seconds"
             else:
-                explanation_var.set("An image taken at " + date + " with a "+str(duration_value)+" second shutter speed")
+                acc_string=""
+
+            if check_value == False:
+                explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " +  date + acc_string + " and took " + str(duration_value) + " seconds to capture" )
+            else:
+                explanation_var.set("An image taken at " + date + acc_string + " with a "+str(duration_value)+" second shutter speed")
             explanation.config(bg="grey64")
         except ValueError as e:
             explanation_var.set("Invalid values!")
@@ -216,31 +226,37 @@ def main():
 
     # explanation text
     explanation_var = tk.StringVar()
-    explanation = tk.Label(timestamp, textvariable=explanation_var, wraplength=450)
+    explanation = tk.Label(capture_timestamp, textvariable=explanation_var, wraplength=450)
     explanation.config(width=70)
 
     # Original capture date
-    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_start_on_original_metadata_ts"]) ))
-    cap_start_label=tk.Label(timestamp, text="Original capture start date:")
-    cap_start = tk.Entry(timestamp,textvariable=cap_start_var,state=tk.DISABLED)
+    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]) ))
+    cap_start_label=tk.Label(capture_timestamp, text="Original capture start date:")
+    cap_start = tk.Entry(capture_timestamp,textvariable=cap_start_var,state=tk.DISABLED)
 
     # Capture date offset
-    cap_offset_var = tk.StringVar(value=data["capture_start_time_offset"])
-    cap_offset_var.trace_add("write", update_timestamp_description)
-    cap_offset_label=tk.Label(timestamp, text="Capture start date offset seconds:")
-    cap_offset = tk.Entry(timestamp,textvariable=cap_offset_var)
+    cap_offset_var = tk.StringVar(value=data["capture_timestamp"]["capture_start_time_offset_seconds"])
+    cap_offset_var.trace_add("write", update_capture_timestamp_description)
+    cap_offset_label=tk.Label(capture_timestamp, text="Capture start date offset seconds:")
+    cap_offset = tk.Entry(capture_timestamp,textvariable=cap_offset_var)
 
     # Capture duration
-    cap_duration_var = tk.StringVar(value=str(data["capture_duration_seconds"]))
-    cap_duration_var.trace_add("write", update_timestamp_description)
-    cap_duration_label=tk.Label(timestamp, text="Capture duration (seconds):")
-    cap_duration = tk.Entry(timestamp,textvariable=cap_duration_var)
+    cap_duration_var = tk.StringVar(value=str(data["capture_timestamp"]["capture_duration_seconds"]))
+    cap_duration_var.trace_add("write", update_capture_timestamp_description)
+    cap_duration_label=tk.Label(capture_timestamp, text="Capture duration (seconds):")
+    cap_duration = tk.Entry(capture_timestamp,textvariable=cap_duration_var)
+
+    # Capture accuracy
+    cap_accuracy_var = tk.StringVar(value=str(data["events"][0]["timestamp_accuracy_seconds"]))
+    cap_accuracy_var.trace_add("write", update_capture_timestamp_description)
+    cap_accuracy_label=tk.Label(capture_timestamp, text="Capture start accuracy (±seconds):")
+    cap_accuracy = tk.Entry(capture_timestamp,textvariable=cap_accuracy_var)
 
     # One shot checkbox
     one_capture_var = tk.BooleanVar()
-    one_capture_var.trace_add( "write", update_timestamp_description)
-    one_capture = tk.Checkbutton(timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
-    one_capture.select() #this also calls update_timestamp_description. If removed place a call to it to write the initial value on the text box
+    one_capture_var.trace_add( "write", update_capture_timestamp_description)
+    one_capture = tk.Checkbutton(capture_timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
+    one_capture.select() #this also calls update_capture_timestamp_description. If removed place a call to it to write the initial value on the text box
 
 
     cap_start_label.grid     (row=0,column=0,padx=3,pady=3)
@@ -249,17 +265,19 @@ def main():
     cap_duration.grid        (row=0,column=3,padx=3,pady=3)
     cap_offset_label.grid    (row=1,column=0,padx=3,pady=3)
     cap_offset.grid          (row=1,column=1,padx=3,pady=3)
-    one_capture.grid         (row=1,column=2,padx=3,pady=3,columnspan=2)
-    explanation.grid         (row=2,column=0,padx=3,pady=3,columnspan=4)
+    cap_accuracy_label.grid  (row=1,column=2,padx=3,pady=3)
+    cap_accuracy.grid        (row=1,column=3,padx=3,pady=3)
+    one_capture.grid         (row=2,column=3,padx=3,pady=3)
+    explanation.grid         (row=2,column=0,padx=3,pady=3,columnspan=3)
 
     #############
     # Constants #
     #############
     constants_frame=TitledFrame(editables,[("Constants", ("TkDefaultFont", 10))])
 
-    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
-    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["image_sha512"],input_state=tk.DISABLED)
-    filename=TitledEntry(constants_frame,"Image Filename",data["image_filename"],input_state=tk.DISABLED)
+    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
+    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
+    filename=TitledEntry(constants_frame,"Image Filename",data["constants"]["image_file_full_path"],input_state=tk.DISABLED)
     program_version=TitledEntry(constants_frame,"Program version",data["program_version"],width=8,input_state=tk.DISABLED)
     data_spec_version=TitledEntry(constants_frame,"Data specification version",data["data_spec_version"],width=8,input_state=tk.DISABLED)
 
@@ -306,10 +324,10 @@ def main():
         return_data=[]
         for item in json_events:
             if item["event_type"] == "capture_start":
-                capture_start=item["time"]
+                capture_start=item["timestamp"]
             else:
-                return_data.append({"time":item["time"],"text":item["text"]})
-                return_data.append({"time":capture_start,"text":"Captured data"})
+                return_data.append({"timestamp":item["timestamp"],"text":item["text"]})
+                return_data.append({"timestamp":capture_start,"text":"Captured data"})
         return return_data
 
     timeline_frame=TitledFrame(root,[("Timeline", ("TkDefaultFont", 10))])
@@ -338,17 +356,17 @@ def main():
 
 
     #Root frame layout
-    display_image_frame          .grid(row=0,column=0,sticky='n')
-    editables          .grid(row=0,column=1,rowspan=2,sticky='ns')
-    # map_frame          .grid(row=1,column=0)
-    timeline_frame        .grid(row=2,column=0,columnspan=2)
+    display_image_frame .grid(row=0,column=0,sticky='n')
+    editables           .grid(row=0,column=1,rowspan=2,sticky='ns')
+    # map_frame           .grid(row=1,column=0)
+    timeline_frame      .grid(row=2,column=0,columnspan=2)
 
     #editables frame layout
-    texts_frame     .grid(row=0,column=0,sticky="we",pady=5)
-    timestamp       .grid(row=1,column=0,sticky="we",pady=5)
-    save_frame      .grid(row=2,column=0,sticky="we",pady=5)
-    constants_frame .grid(row=3,column=0,sticky="we",pady=5)
-    # light_table        .grid(row=6,column=0,sticky="we",pady=5)
+    texts_frame         .grid(row=0,column=0,sticky="we",pady=5)
+    capture_timestamp   .grid(row=1,column=0,sticky="we",pady=5)
+    save_frame          .grid(row=2,column=0,sticky="we",pady=5)
+    constants_frame     .grid(row=3,column=0,sticky="we",pady=5)
+    # light_table         .grid(row=6,column=0,sticky="we",pady=5)
 
     root.mainloop()
 
@@ -474,7 +492,7 @@ def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
     labels=[]
     for item in events:
         labels.append(item["text"])
-        timelines.append(datetime.fromtimestamp(item["time"]))
+        timelines.append(datetime.fromtimestamp(item["timestamp"]))
 
     offsets= [3,2,1]
     levels = np.tile(offsets, int(np.ceil(len(timelines)/len(offsets))))[:len(timelines)]
