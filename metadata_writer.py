@@ -19,9 +19,9 @@
 
 #TODO:
 #Weather image is cropped
-#Make save button red if any data is inparsable
+#Make save button red if any data is unparsable
 
-#import stuff that's needed for both gui and check mode plus tkinter to make inheritance easier (for now)
+#import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
 import hashlib
 import json
@@ -62,8 +62,8 @@ def main():
                 "cameras": [
                             {
                                 "id": 0,
-                                "brand":"Unkown",
-                                "model":"unkown",
+                                "brand":"Unknown",
+                                "model":"unknown",
                                 "serial_number":None
                             },{
                                 "id": 1,
@@ -130,9 +130,9 @@ def main():
         #"GPS_long_dec_W": -0.12472196184719725,
 
         #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
-        #           { "source":3, "type":"continious", "Usage":"hair light" },
-        #           { "source":1, "type":"continious", "Usage":"doing its thing" },
-        #           { "source":0, "type":"continious", "Usage":"street light" }
+        #           { "source":3, "type":"continuous", "Usage":"hair light" },
+        #           { "source":1, "type":"continuous", "Usage":"doing its thing" },
+        #           { "source":0, "type":"continuous", "Usage":"street light" }
         #           ]
     }
 
@@ -151,7 +151,7 @@ def main():
         data["single_capture_picture"] = one_capture_var.get()
         data["capture_start_time_offset"] = float(cap_offset_var.get())
         data["capture_duration_seconds"] = float(cap_duration_var.get())
-        data["events"][0]["time"] = int(data["capture_start_time_offset"])+int(data["capture_start_on_original_metadata_ts"])
+        data["events"][0]["time"] = int(data["capture_start_time_offset"])+int(data["capture_start_on_original_metadata_ts"])  #TODO: don't hardcode this values
 
         output_path = Path(data["image_filename"]).with_suffix(".json")
 
@@ -184,7 +184,7 @@ def main():
     #########
     texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
-    title = TitledEntry(texts_frame,"Ttile","",input_state=tk.NORMAL)
+    title = TitledEntry(texts_frame,"Title","",input_state=tk.NORMAL)
     description = TextScrollCombo(texts_frame,"Description:")
 
     title.grid       (row=0,column=0,sticky='we',padx=3,pady=3)
@@ -211,7 +211,7 @@ def main():
                 explanation_var.set("An image taken at " + date + " with a "+str(duration_value)+" second shutter speed")
             explanation.config(bg="grey64")
         except ValueError as e:
-            explanation_var.set("Invalid vlaues!")
+            explanation_var.set("Invalid values!")
             explanation.config(bg="red")
 
     # explanation text
@@ -220,28 +220,27 @@ def main():
     explanation.config(width=70)
 
     # Original capture date
-    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_start_on_original_metadata_ts"]) )) #TODO: don't hardcode these values
-    #cap_start_var.trace_add("write", update_timestamp_description)
+    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_start_on_original_metadata_ts"]) ))
     cap_start_label=tk.Label(timestamp, text="Original capture start date:")
-    cap_start = tk.Entry(timestamp,textvariable=cap_start_var,state=tk.DISABLED)#,state=tk.DISABLED)
+    cap_start = tk.Entry(timestamp,textvariable=cap_start_var,state=tk.DISABLED)
 
     # Capture date offset
-    cap_offset_var = tk.StringVar(value=data["capture_start_time_offset"]) #TODO: don't hardcode these values
+    cap_offset_var = tk.StringVar(value=data["capture_start_time_offset"])
     cap_offset_var.trace_add("write", update_timestamp_description)
     cap_offset_label=tk.Label(timestamp, text="Capture start date offset seconds:")
-    cap_offset = tk.Entry(timestamp,textvariable=cap_offset_var)#,state=tk.DISABLED)
+    cap_offset = tk.Entry(timestamp,textvariable=cap_offset_var)
 
     # Capture duration
     cap_duration_var = tk.StringVar(value=str(data["capture_duration_seconds"]))
     cap_duration_var.trace_add("write", update_timestamp_description)
     cap_duration_label=tk.Label(timestamp, text="Capture duration (seconds):")
-    cap_duration = tk.Entry(timestamp,textvariable=cap_duration_var)#,state=tk.DISABLED)
+    cap_duration = tk.Entry(timestamp,textvariable=cap_duration_var)
 
     # One shot checkbox
     one_capture_var = tk.BooleanVar()
     one_capture_var.trace_add( "write", update_timestamp_description)
     one_capture = tk.Checkbutton(timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
-    one_capture.select() #this also calles update_timestamp_description. If removed place a call to it to write the inital value on the text box
+    one_capture.select() #this also calls update_timestamp_description. If removed place a call to it to write the initial value on the text box
 
 
     cap_start_label.grid     (row=0,column=0,padx=3,pady=3)
@@ -287,7 +286,6 @@ def main():
 
     event_attribution.grid (row=0,column=0,padx=3,pady=3,sticky='we')
     save_button.grid       (row=0,column=1,padx=3,pady=3)
-    #save_button.grid       (row=0,column=1,padx=3,pady=3,sticky='e')
     save_frame.grid_columnconfigure(0, weight=1)
 
     # ##############
@@ -320,10 +318,10 @@ def main():
     timeline.grid(row=0,column=0)
 
 
-    ###################
-    # Media aqusition #
-    ###################
-    #media_aqusition=TitledDropdown(root,"Media Aquisition",["unkown","Direct digital off of taking device","Received digitial unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital editied"],0)
+    #####################
+    # Media acquisition #
+    #####################
+    #media_acquisition=TitledDropdown(root,"Media Acquisition",["unknown","Direct digital off of taking device","Received digital unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital edited"],0)
 
     ##########
     # Lights #
