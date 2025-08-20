@@ -20,6 +20,10 @@
 #TODO:
 #Weather image is cropped
 #Make save button red if any data is unparsable
+#Make it so that each module doesn't have an event id, instead store on the event data which modules got changed
+#Add timezone setting for exif date
+#Change the background of TitledFrames from the wnidow background
+#Change button from save and exit to write and exit
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -27,6 +31,7 @@ import hashlib
 import json
 import os
 from datetime import datetime
+from datetime import timezone
 import tkinter as tk
 from tkinter import ttk
 
@@ -47,11 +52,12 @@ def main():
     from PIL.ExifTags import TAGS
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
-    from datetime import datetime
-    #import tkintermapview
+    import tkintermapview
     from pathlib import Path
     from exif import Image as exifImage
     from fractions import Fraction
+    import gpxpy
+    import gpxpy.gpx
 
     device_data = {
                 "lights": [ { "id": 0, "brand":"",        "name": "other"     },
@@ -97,7 +103,8 @@ def main():
         elif tag == 'DateTimeOriginal':
             dt_str = value
             dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
-            create_datetime=int(dt.timestamp())  # Unix epoch time
+            utc_dt = dt.replace(tzinfo=timezone.utc)
+            create_datetime=int(utc_dt.timestamp())  # Unix epoch time
 
     #JSON output template
     data = {
@@ -125,8 +132,27 @@ def main():
                     { "event_id":1, "event_type": "metadata_modification", "timestamp": current_event_timestamp, "timestamp_accuracy_seconds": 0, "text": "Initial metadata written" },
                     #{ "event_id":5, "event_type": "version_upgrade",       "timestamp": 1759876088, "text": "Metadata version updated" }
                     ],
-        #"GPS_lat_dec_N": 51.500789280409016,
-        #"GPS_long_dec_W": -0.12472196184719725,
+        "geolocation_data" : {
+            "have_data": True,
+            "valid_data_source": "uninitialised",
+            "source_gpx_file":{
+                "have_data": False,
+                "GPS_latitude_decimal": 0,
+                "GPS_longitude_decimal": 0,
+                "gpx_device_time_offset_seconds": 0,
+                "gpx_file_path": "",
+            },
+            "source_original_media_file":{
+                "have_data": False,
+                "GPS_latitude_decimal": 0,
+                "GPS_longitude_decimal": 0,
+            },
+            "source_manual_entry":{
+                "have_data": False,
+                "GPS_latitude_decimal": 0,
+                "GPS_longitude_decimal": 0,
+            }
+        }
         #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
         #           { "source":3, "type":"continuous", "Usage":"hair light" },
         #           { "source":1, "type":"continuous", "Usage":"doing its thing" },
@@ -148,12 +174,7 @@ def main():
         data["texts"]["event_id"] = attribution_event
 
         #Capture Timestamp
-        data["capture_timestamp"]["capture_duration_seconds"] = float(cap_duration_var.get())
-        data["capture_timestamp"]["single_capture_picture"] = one_capture_var.get()
-        data["capture_timestamp"]["capture_start_time_offset_seconds"] = float(cap_offset_var.get())
         data["capture_timestamp"]["event_id"] = attribution_event
-        data["events"][0]["timestamp"] = int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"])  #TODO: don't hardcode this values
-        data["events"][0]["timestamp_accuracy_seconds"] = int(cap_accuracy_var.get())  #TODO: don't hardcode this values
 
         output_path = Path(data["constants"]["image_file_full_path"]).with_suffix(".json")
 
@@ -193,6 +214,120 @@ def main():
     description.grid (row=1,column=0,sticky='we',padx=3,pady=3)
     texts_frame.grid_columnconfigure(0, weight=1)
 
+    ####################
+    # Geolocation data #
+    ####################
+    def try_gpx_file(filepath):
+        gpx_file = open(filepath, 'r')
+        gpx = gpxpy.parse(gpx_file)
+        point_found=0
+        data["geolocation_data"]["source_gpx_file"]["have_data"]=False
+        for track in gpx.tracks:
+            for segment in track.segments:
+                for point in segment.points:
+                    if(point.time == datetime.fromtimestamp(data["events"][0]["timestamp"]-data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],tz=timezone.utc)): #TODO don't hardcode this value
+                        data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"]=point.longitude
+                        data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"]=point.latitude
+                        data["geolocation_data"]["source_gpx_file"]["gpx_file_path"]=filepath
+                        data["geolocation_data"]["source_gpx_file"]["gpx_file_sha512sum"]=sha512Checksum(filepath)
+                        data["geolocation_data"]["source_gpx_file"]["have_data"]=True
+                        point_found=1
+                        break
+                if point_found==1:
+                    break
+            if point_found==1:
+                break
+        if point_found==0:
+            return 1
+        else:
+            return 0
+
+    def Geolocation_update(*args):
+        manual_lat=gnss_manual_entry_source.get_lat()
+        manual_long=gnss_manual_entry_source.get_long()
+        data["geolocation_data"]["valid_data_source"]=human_name_to_source[gnss_source_selection.get()]
+        try:
+            manual_lat=float(manual_lat)
+            manual_long=float(manual_long)
+            data["geolocation_data"]["source_manual_entry"]["GPS_latitude_decimal"]=manual_lat
+            data["geolocation_data"]["source_manual_entry"]["GPS_longitude_decimal"]=manual_long
+            data["geolocation_data"]["source_manual_entry"]["have_data"]=True
+        except ValueError as e:
+            data["geolocation_data"]["source_manual_entry"]["have_data"]=False
+
+        if data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["have_data"] == True:
+            new_lat=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_latitude_decimal"]
+            new_long=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_longitude_decimal"]
+            map_marker.set_position(new_lat,new_long)
+            map_widget.set_position(new_lat,new_long)
+
+
+    def Geolocation_update_time(*args):
+        try:
+            data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"]=float(gpx_device_time_offset.get())
+        except ValueError as e:
+            data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"]=0
+        for file in os.listdir("/home/user/gnss_test/"):
+            if file.endswith(".gpx"):
+                #print("Trying "+str(os.path.join("/home/user/gnss_test/", file)))
+                if try_gpx_file(os.path.join("/home/user/gnss_test/", file)) == 0:
+                    break
+        if data["geolocation_data"]["source_gpx_file"]["have_data"] == True :
+            gnss_gpx_file_source.update_lat( data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"])
+            gnss_gpx_file_source.update_long( data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+        else:
+            gnss_gpx_file_source.update_lat("")
+            gnss_gpx_file_source.update_long("")
+        Geolocation_update()
+
+    gnss_location_data_frame=TitledFrame(root,[("[3]", ("TkDefaultFont", 12, "bold")),("Geolocation data", ("TkDefaultFont", 10))])
+
+    #Map Widget
+    map_widget = tkintermapview.TkinterMapView(gnss_location_data_frame, width=400, height=250, corner_radius=10)
+    map_widget.set_position(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+    map_marker=map_widget.set_marker(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+    map_widget.set_zoom(15)
+
+    gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
+                                         ("Original media file",
+                                          "GPX file",
+                                          "Manual entry")
+                                         ,0,callback=Geolocation_update)
+    human_name_to_source = {
+            "Original media file": "source_original_media_file",
+            "GPX file": "source_gpx_file",
+            "Manual entry": "source_manual_entry"
+    }
+    gpx_device_time_offset=TitledEntry(gnss_location_data_frame,"GPX device time offset (seconds)",data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],callback=Geolocation_update_time)
+
+    #Sources
+    gnss_gpx_file_source=Geolocation_source(gnss_location_data_frame,
+                                         "GPX file:",
+                                         data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"],
+                                         data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"],
+                                         tk.DISABLED)
+
+    gnss_original_media_file_source=Geolocation_source(gnss_location_data_frame,
+                                         "Original media file:",
+                                         data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"],
+                                         data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"],
+                                         tk.DISABLED)
+
+    gnss_manual_entry_source=Geolocation_source(gnss_location_data_frame,
+                                        "Original media file:",
+                                        "",
+                                        "",
+                                        tk.NORMAL, callback=Geolocation_update)
+
+    map_widget.grid                      (row=0,column=0,pady=(0,3),padx=5)
+    gnss_source_selection.grid           (row=1,column=0,pady=(5,2),sticky='we')
+    gpx_device_time_offset.grid          (row=2,column=0,pady=(2,5),sticky='w')
+    gnss_gpx_file_source.grid            (row=3,column=0,sticky='we')
+    gnss_original_media_file_source.grid (row=4,column=0,sticky='we')
+    gnss_manual_entry_source.grid        (row=5,column=0,sticky='we')
+
+    #Geolocation_update_time() #Note, not needed because the capture timestamp callback will call it
+
     #####################
     # Capture timestamp #
     #####################
@@ -200,29 +335,33 @@ def main():
 
     #Callback for updating the explanation
     def update_capture_timestamp_description(*args):
-        date_value = cap_start_var.get()
-        duration_value = cap_duration.get()
-        check_value = one_capture_var.get()
-        accuracy=cap_accuracy_var.get()
-
+        image_creation_event_id=0#TODO: don't hardcode this value
         try:
-            duration_value=str(float(duration_value))
-            accuracy=float(accuracy)
-            date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]+int(cap_offset_var.get())))
-
-            if accuracy != 0.0:
-                acc_string=" plus/minus "+str(accuracy)+" seconds"
-            else:
-                acc_string=""
-
-            if check_value == False:
-                explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " +  date + acc_string + " and took " + str(duration_value) + " seconds to capture" )
-            else:
-                explanation_var.set("An image taken at " + date + acc_string + " with a "+str(duration_value)+" second shutter speed")
-            explanation.config(bg="grey64")
+            data["capture_timestamp"]["capture_start_time_offset_seconds"] = float(cap_offset_var.get())
+            #If the capture time changes, update it and a list of thing that depend on it
+            if data["events"][image_creation_event_id]["timestamp"] != int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]):
+                data["events"][image_creation_event_id]["timestamp"] = int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"])
+                Geolocation_update_time()
+            data["capture_timestamp"]["capture_duration_seconds"] = float(cap_duration_var.get())
+            data["capture_timestamp"]["single_capture_picture"] = one_capture_var.get()
+            data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] = float(cap_accuracy_var.get())
         except ValueError as e:
             explanation_var.set("Invalid values!")
             explanation.config(bg="red")
+            return
+
+        date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]+int(cap_offset_var.get())))
+
+        if data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] != 0.0:
+            acc_string=" plus/minus "+str(data["events"][image_creation_event_id]["timestamp_accuracy_seconds"])+" seconds"
+        else:
+            acc_string=""
+
+        if data["capture_timestamp"]["capture_duration_seconds"] == False:
+            explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " + date + acc_string + " and took " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " seconds to capture" )
+        else:
+            explanation_var.set("An image taken at " + date + acc_string + " with a " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " second shutter speed")
+        explanation.config(bg="grey64")
 
     # explanation text
     explanation_var = tk.StringVar()
@@ -247,7 +386,7 @@ def main():
     cap_duration = tk.Entry(capture_timestamp,textvariable=cap_duration_var)
 
     # Capture accuracy
-    cap_accuracy_var = tk.StringVar(value=str(data["events"][0]["timestamp_accuracy_seconds"]))
+    cap_accuracy_var = tk.StringVar(value=str(data["events"][0]["timestamp_accuracy_seconds"])) #TODO: don't hardcode this value
     cap_accuracy_var.trace_add("write", update_capture_timestamp_description)
     cap_accuracy_label=tk.Label(capture_timestamp, text="Capture start accuracy (±seconds):")
     cap_accuracy = tk.Entry(capture_timestamp,textvariable=cap_accuracy_var)
@@ -291,7 +430,7 @@ def main():
     ########
     # Save #
     ########
-    save_frame=TitledFrame(editables,[("[3]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
+    save_frame=TitledFrame(editables,[("[4]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
     save_button = tk.Button(save_frame, text="Save and Exit", command=save_and_exit)
     save_button.config(bg='green')
 
@@ -305,16 +444,6 @@ def main():
     event_attribution.grid (row=0,column=0,padx=3,pady=3,sticky='we')
     save_button.grid       (row=0,column=1,padx=3,pady=3)
     save_frame.grid_columnconfigure(0, weight=1)
-
-    # ##############
-    # # Map widget #
-    # ##############
-    # map_frame=Frame(root)
-    # map_widget = tkintermapview.TkinterMapView(map_frame, width=400, height=400, corner_radius=10)
-    # map_widget.set_position(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
-    # marker_1=map_widget.set_marker(data["GPS_lat_dec_N"], data["GPS_long_dec_W"])
-    # map_widget.set_zoom(15)
-    # map_widget.pack(pady=15)
 
     ##################
     # timeline field #
@@ -356,19 +485,28 @@ def main():
 
 
     #Root frame layout
-    display_image_frame .grid(row=0,column=0,sticky='n')
-    editables           .grid(row=0,column=1,rowspan=2,sticky='ns')
-    # map_frame           .grid(row=1,column=0)
-    timeline_frame      .grid(row=2,column=0,columnspan=2)
+    display_image_frame      .grid(row=0,column=0,sticky='n')
+    editables                .grid(row=0,column=1,rowspan=2,sticky='ns')
+    gnss_location_data_frame .grid(row=1,column=0)
+    timeline_frame           .grid(row=2,column=0,columnspan=2)
 
     #editables frame layout
-    texts_frame         .grid(row=0,column=0,sticky="we",pady=5)
-    capture_timestamp   .grid(row=1,column=0,sticky="we",pady=5)
-    save_frame          .grid(row=2,column=0,sticky="we",pady=5)
-    constants_frame     .grid(row=3,column=0,sticky="we",pady=5)
-    # light_table         .grid(row=6,column=0,sticky="we",pady=5)
+    texts_frame       .grid(row=0,column=0,sticky="we",pady=5)
+    capture_timestamp .grid(row=1,column=0,sticky="we",pady=5)
+    save_frame        .grid(row=2,column=0,sticky="we",pady=5)
+    constants_frame   .grid(row=3,column=0,sticky="we",pady=5)
+    # light_table       .grid(row=6,column=0,sticky="we",pady=5)
+
+    #This updates the default gnss source after the timestamp callback calls the gnss callback that looks through all the files
+    if data["geolocation_data"]["source_original_media_file"]["have_data"] == True :
+        gnss_source_selection.set(0)
+    elif data["geolocation_data"]["source_gpx_file"]["have_data"] == True :
+        gnss_source_selection.set(1)
+    else:
+        gnss_source_selection.set(2)
 
     root.mainloop()
+
 
 
 #Got md5Checksum (sha512Checksum now) from someones blog https://www.joelverhagen.com/blog/2011/02/md5-hash-of-file-in-python/
@@ -410,7 +548,7 @@ class TextScrollCombo(tk.Frame):
 
 class TitledDropdown(tk.Frame):
 
-    def __init__(self, root_window, text, options, default_opt):
+    def __init__(self, root_window, text, options, default_opt, callback=None):
 
         super().__init__(root_window)
 
@@ -420,23 +558,33 @@ class TitledDropdown(tk.Frame):
         tk.Label(self, text=text).grid (row=0,column=0,sticky='w')
         self.titled_dropdown.grid      (row=0,column=1,sticky='we')
         self.grid_columnconfigure(1, weight=1)
+        self.callback=callback
+        if callback != None:
+            self.titled_dropdown.bind('<<ComboboxSelected>>', callback)
     def get(c):
         return c.titled_dropdown.get()
+    def set(self,n):
+        self.titled_dropdown.current(n)
+        if self.callback != None:
+            self.callback()
 
 class TitledEntry(tk.Frame):
 
-    def __init__(self, root_window, text, init_text, input_state=tk.NORMAL, width=None):
+    def __init__(self, root_window, text, init_text, input_state=tk.NORMAL, width=None, callback=None):
 
         super().__init__(root_window)
 
-        self.title_entry = tk.Entry(self,state=input_state,textvariable=tk.StringVar(value=init_text),width=width)
+        self.titled_entry_var=tk.StringVar(value=init_text)
+        self.titled_entry = tk.Entry(self,state=input_state,textvariable=self.titled_entry_var,width=width)
+        if callback != None:
+            self.titled_entry_var.trace_add("write", callback)
 
         self.label=tk.Label(self, text=text)
         self.label.grid(row=0,column=0,sticky='w')
-        self.title_entry.grid(row=0,column=1,sticky='we')
+        self.titled_entry.grid(row=0,column=1,sticky='we')
         self.grid_columnconfigure(1, weight=1)
     def get(c):
-        return c.title_entry.get()
+        return c.titled_entry.get()
 
 class TitledTable(tk.Frame):
 
@@ -476,8 +624,53 @@ class TitledTable(tk.Frame):
         self.scrollb.grid(row=1,column=1,sticky='ns')
         self.treeview['yscrollcommand'] = self.scrollb.set
         self.utility_frame.grid(row=1,column=2,sticky='n')
-    def get(c):
-        return c.title_entry.get()
+
+class Geolocation_source(tk.Frame):
+
+    def __init__(self, root, text, lat_source, long_source, state, callback=None):
+
+        super().__init__(root)
+
+        self.separator = ttk.Separator(self, orient=tk.HORIZONTAL)
+        self.separator_label = tk.Label(self, text=text)
+        self.paste_button = tk.Button(self, text="Paste",state=state, command=self.paste_callback)
+
+        self.root=root
+
+        self.fields=tk.Frame(self)
+        self.lat_var = tk.StringVar(value=lat_source)
+        self.lat_label = tk.Label(self.fields, text="Latitude:")
+        self.lat = tk.Entry(self.fields,textvariable=self.lat_var,state=state)
+        self.long_var = tk.StringVar(value=long_source)
+        self.long_label = tk.Label(self.fields, text="Longtitude:")
+        self.long = tk.Entry(self.fields,textvariable=self.long_var,state=state)
+
+        self.lat_label.grid        (row=0,column=0,pady=3)
+        self.lat.grid              (row=0,column=1,pady=3)
+        self.long_label.grid       (row=0,column=2,pady=3)
+        self.long.grid             (row=0,column=3,pady=3)
+
+        self.separator.grid        (row=0,column=0,columnspan=2,pady=4,sticky='we')
+        self.separator_label.grid  (row=1,column=0,sticky='w')
+        self.paste_button.grid     (row=1,column=1,sticky='e')
+        self.fields.grid           (row=2,column=0,columnspan=2,sticky='w')
+
+        if callback != None:
+            self.lat_var.trace_add("write", callback)
+            self.long_var.trace_add("write", callback)
+    def get_lat(self):
+        return self.lat_var.get()
+    def get_long(self):
+        return self.long_var.get()
+    def update_lat(self,value):
+        self.lat_var.set(value)
+    def update_long(self,value):
+        self.long_var.set(value)
+    def paste_callback(self):
+        clipboard=self.root.clipboard_get()
+        self.lat_var.set(clipboard.split()[0])
+        self.long_var.set(clipboard.split()[1])
+
 
 
 def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
