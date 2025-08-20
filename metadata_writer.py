@@ -23,7 +23,6 @@
 #Make it so that each module doesn't have an event id, instead store on the event data which modules got changed
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
-#Change button from save and exit to write and exit
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -431,7 +430,7 @@ def main():
     # Save #
     ########
     save_frame=TitledFrame(editables,[("[4]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
-    save_button = tk.Button(save_frame, text="Save and Exit", command=save_and_exit)
+    save_button = tk.Button(save_frame, text="Write and Exit", command=save_and_exit)
     save_button.config(bg='green')
 
     event_list=[]
