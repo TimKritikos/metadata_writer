@@ -151,6 +151,7 @@ def main():
         "geolocation_data" : {
             "have_data": False,
             "valid_data_source": "uninitialised",
+            "display_map_tile_server" : "",
             "source_gpx_file":{
                 "have_data": False,
                 "GPS_latitude_decimal": 0,
@@ -182,12 +183,6 @@ def main():
 
 
     def save_and_exit():
-        try:
-            attribution_event=int(event_attribution.get().split()[2])
-        except ValueError as e:
-            print("Error: internal error getting event id for save")
-            return -1
-
         output_path = Path(data["constants"]["image_file_full_path"]).with_suffix(".json")
 
         with open(output_path, "w") as f:
@@ -261,7 +256,11 @@ def main():
     def Geolocation_update(*args):
         manual_lat=gnss_manual_entry_source.get_lat()
         manual_long=gnss_manual_entry_source.get_long()
+        data["geolocation_data"]["display_map_tile_server"]=map_tile_server_selection.get()
         data["geolocation_data"]["valid_data_source"]=human_name_to_source[gnss_source_selection.get()]
+
+        map_widget.set_tile_server(tilemap_url_option_map[data["geolocation_data"]["display_map_tile_server"]], max_zoom=tilemap_maxzoom_option_map[data["geolocation_data"]["display_map_tile_server"]])
+
         try:
             manual_lat=float(manual_lat)
             manual_long=float(manual_long)
@@ -312,7 +311,7 @@ def main():
     map_widget.set_position(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
     map_widget.set_zoom(15)
     global map_marker
-    map_marker=None #map_widget.set_marker(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+    map_marker=None
 
     gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
                                          ("Original media file",
@@ -325,6 +324,21 @@ def main():
             "Manual entry": "source_manual_entry"
     }
     gpx_device_time_offset=TitledEntry(gnss_location_data_frame,"GPX device time offset (seconds)",data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],callback=Geolocation_update_time)
+
+    map_tile_server_selection=TitledDropdown(gnss_location_data_frame,"Map tile server",(
+        "OpenStreetMaps online",
+        "Google Maps default online",
+        "Google Maps satelite online"),0,callback=Geolocation_update)
+    tilemap_url_option_map={
+            "OpenStreetMaps online":       "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "Google Maps default online":  "https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga",
+            "Google Maps satelite online": "https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga"
+    }
+    tilemap_maxzoom_option_map={
+            "OpenStreetMaps online":       20,
+            "Google Maps default online":  22,
+            "Google Maps satelite online": 22
+    }
 
     #Sources
     gnss_gpx_file_source=Geolocation_source(gnss_location_data_frame,
@@ -346,11 +360,12 @@ def main():
                                         tk.NORMAL, callback=Geolocation_update)
 
     map_widget.grid                      (row=0,column=0,pady=(0,3),padx=5)
-    gnss_source_selection.grid           (row=1,column=0,pady=(5,2),sticky='we')
-    gpx_device_time_offset.grid          (row=2,column=0,pady=(2,5),sticky='w')
-    gnss_gpx_file_source.grid            (row=3,column=0,sticky='we')
-    gnss_original_media_file_source.grid (row=4,column=0,sticky='we')
-    gnss_manual_entry_source.grid        (row=5,column=0,sticky='we')
+    map_tile_server_selection.grid       (row=1,column=0,pady=(5,2),sticky='we')
+    gnss_source_selection.grid           (row=2,column=0,pady=(2,2),sticky='we')
+    gpx_device_time_offset.grid          (row=3,column=0,pady=(2,5),sticky='w')
+    gnss_gpx_file_source.grid            (row=4,column=0,sticky='we')
+    gnss_original_media_file_source.grid (row=5,column=0,sticky='we')
+    gnss_manual_entry_source.grid        (row=6,column=0,sticky='we')
 
     #Geolocation_update_time() #Note, not needed because the capture timestamp callback will call it
 
