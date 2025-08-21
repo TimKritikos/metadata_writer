@@ -20,7 +20,6 @@
 #TODO:
 #Weather image is cropped
 #Make save button red if any data is unparsable
-#Make it so that each module doesn't have an event id, instead store on the event data which modules got changed
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
 
@@ -110,27 +109,45 @@ def main():
         "program_version": "v1.0-dev",
         "data_spec_version": "v1.0-dev",
 
+        "events" : [{
+                        "event_id":0,
+                        "event_type": "capture_start",
+                        "timestamp": 0,
+                        "timestamp_accuracy_seconds": 0,
+
+                        "text": ""
+                    },
+                    #{
+                    #   "event_id":2,
+                    #   "event_type": "data_modification",
+                    #   "timestamp": 1741745288,
+                    #   "text": "Raw file developed"
+                    #},
+                    {
+                        "event_id":1,
+                        "event_type": "metadata_modification",
+                        "timestamp": current_event_timestamp,
+                        "timestamp_accuracy_seconds": 0,
+
+                        "text": "Initial metadata written",
+                        "modified_metadata_modules":[
+                                "texts",
+                                "capture_timestamp",
+                                "constants",
+                                "geolocation_data"
+                            ]
+                    },
+                    ],
         "texts": {
             "title" : "",
             "description" : "",
-            "event_id" : -1
         },
         "capture_timestamp": {
             "capture_start_on_original_metadata_timestamp": create_datetime,
             "capture_duration_seconds": exposure_time,
             "single_capture_picture": True,
             "capture_start_time_offset_seconds": 0,
-            "event_id" : -1
         },
-        "constants": {
-            "image_sha512": sha512Checksum(image_path),
-            "image_file_full_path": os.path.realpath(sys.argv[1])
-        },
-        "events" : [{ "event_id":0, "event_type": "capture_start",         "timestamp": 0, "timestamp_accuracy_seconds": 0, "text": "" },
-                    #{ "event_id":2, "event_type": "data_modification",     "timestamp": 1741745288, "text": "Raw file developed"},
-                    { "event_id":1, "event_type": "metadata_modification", "timestamp": current_event_timestamp, "timestamp_accuracy_seconds": 0, "text": "Initial metadata written" },
-                    #{ "event_id":5, "event_type": "version_upgrade",       "timestamp": 1759876088, "text": "Metadata version updated" }
-                    ],
         "geolocation_data" : {
             "have_data": False,
             "valid_data_source": "uninitialised",
@@ -151,6 +168,10 @@ def main():
                 "GPS_latitude_decimal": 0,
                 "GPS_longitude_decimal": 0,
             }
+        },
+        "constants": {
+            "image_sha512": sha512Checksum(image_path),
+            "image_file_full_path": os.path.realpath(sys.argv[1])
         }
         #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
         #           { "source":3, "type":"continuous", "Usage":"hair light" },
@@ -166,14 +187,6 @@ def main():
         except ValueError as e:
             print("Error: internal error getting event id for save")
             return -1
-
-        #Texts
-        data["texts"]["title"] = title.get()
-        data["texts"]["description"] = description.get("1.0",'end-1c')
-        data["texts"]["event_id"] = attribution_event
-
-        #Capture Timestamp
-        data["capture_timestamp"]["event_id"] = attribution_event
 
         output_path = Path(data["constants"]["image_file_full_path"]).with_suffix(".json")
 
@@ -204,10 +217,14 @@ def main():
     #########
     # Texts #
     #########
+    def update_texts(*args):
+        data["texts"]["title"]=title.get()
+        data["texts"]["description"]=description.get("1.0",'end-1c')
+
     texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
-    title = TitledEntry(texts_frame,"Title","",input_state=tk.NORMAL)
-    description = TextScrollCombo(texts_frame,"Description:")
+    title = TitledEntry(texts_frame,"Title","",callback=update_texts)
+    description = TextScrollCombo(texts_frame,"Description:",callback=update_texts)
 
     title.grid       (row=0,column=0,sticky='we',padx=3,pady=3)
     description.grid (row=1,column=0,sticky='we',padx=3,pady=3)
@@ -448,10 +465,7 @@ def main():
             if item["event_type"] == "metadata_modification":
                 event_list.append("event id "+str(item["event_id"])+" : "+item["text"])
 
-    event_attribution=TitledDropdown(save_frame,"Metadata change event attribution:",event_list,0)
-
-    event_attribution.grid (row=0,column=0,padx=3,pady=3,sticky='we')
-    save_button.grid       (row=0,column=1,padx=3,pady=3)
+    save_button.grid       (row=0,column=1,padx=3,pady=3,sticky='e')
     save_frame.grid_columnconfigure(0, weight=1)
 
     ##################
@@ -532,7 +546,7 @@ def sha512Checksum(filePath):
 #Got TextScrollCombo from stack overflow https://stackoverflow.com/questions/13832720/how-to-attach-a-scrollbar-to-a-text-widget
 class TextScrollCombo(tk.Frame):
 
-    def __init__(self, root_window, title):
+    def __init__(self, root_window, title, callback=None):
 
         super().__init__(root_window)
 
@@ -543,6 +557,9 @@ class TextScrollCombo(tk.Frame):
         # create a Text widget
         self.txt = tk.Text(self,height=10)
         self.txt.config(height=5)
+
+        if callback != None:
+            self.txt.bind('<KeyRelease>', callback)
 
         tk.Label(self, text=title).grid(row=0, column=0, sticky="w")
         self.txt.grid(row=1, column=0, sticky="we")
