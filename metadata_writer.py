@@ -132,7 +132,7 @@ def main():
                     #{ "event_id":5, "event_type": "version_upgrade",       "timestamp": 1759876088, "text": "Metadata version updated" }
                     ],
         "geolocation_data" : {
-            "have_data": True,
+            "have_data": False,
             "valid_data_source": "uninitialised",
             "source_gpx_file":{
                 "have_data": False,
@@ -254,12 +254,21 @@ def main():
         except ValueError as e:
             data["geolocation_data"]["source_manual_entry"]["have_data"]=False
 
+        global map_marker
         if data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["have_data"] == True:
             new_lat=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_latitude_decimal"]
             new_long=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_longitude_decimal"]
-            map_marker.set_position(new_lat,new_long)
+            if map_marker == None:
+                map_marker=map_widget.set_marker(new_lat,new_long)
+            else:
+                map_marker.set_position(new_lat,new_long)
             map_widget.set_position(new_lat,new_long)
-
+            data["geolocation_data"]["have_data"]=True
+        else:
+            data["geolocation_data"]["have_data"]=False
+            if map_marker != None:
+                map_marker.delete()
+                map_marker = None
 
     def Geolocation_update_time(*args):
         try:
@@ -284,8 +293,9 @@ def main():
     #Map Widget
     map_widget = tkintermapview.TkinterMapView(gnss_location_data_frame, width=400, height=250, corner_radius=10)
     map_widget.set_position(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
-    map_marker=map_widget.set_marker(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
     map_widget.set_zoom(15)
+    global map_marker
+    map_marker=None #map_widget.set_marker(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
 
     gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
                                          ("Original media file",
