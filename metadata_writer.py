@@ -22,6 +22,7 @@
 #Make save button red if any data is unparsable
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
+#Add spellcheck in texts
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -47,7 +48,7 @@ def main():
     from tkinter import Frame
     from tkcalendar import Calendar
     from PIL import Image, ImageTk
-    from PIL.ExifTags import TAGS
+    from PIL.ExifTags import TAGS, GPSTAGS
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from time import strftime, localtime
     import tkintermapview
@@ -83,27 +84,6 @@ def main():
                     ]
             }
 
-    #Get current timestamp
-    current_event_timestamp=int(time.time())
-
-    #Get exif from image file
-    image = Image.open(image_path)
-    exif_data = image._getexif()
-
-    shutter_speed_apex = None
-    exposure_time = None
-    create_datetime= None
-
-    for tag_id, value in exif_data.items():
-        tag = TAGS.get(tag_id, tag_id)
-        if tag == 'ExposureTime':
-            exposure_time = float(Fraction(value))
-        elif tag == 'DateTimeOriginal':
-            dt_str = value
-            dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
-            utc_dt = dt.replace(tzinfo=timezone.utc)
-            create_datetime=int(utc_dt.timestamp())  # Unix epoch time
-
     #JSON output template
     data = {
         "program_version": "v1.0-dev",
@@ -126,7 +106,7 @@ def main():
                     {
                         "event_id":1,
                         "event_type": "metadata_modification",
-                        "timestamp": current_event_timestamp,
+                        "timestamp": int(time.time()),
                         "timestamp_accuracy_seconds": 0,
 
                         "text": "Initial metadata written",
@@ -143,8 +123,8 @@ def main():
             "description" : "",
         },
         "capture_timestamp": {
-            "capture_start_on_original_metadata_timestamp": create_datetime,
-            "capture_duration_seconds": exposure_time,
+            "capture_start_on_original_metadata_timestamp": -1,
+            "capture_duration_seconds": -1,
             "single_capture_picture": True,
             "capture_start_time_offset_seconds": 0,
         },
@@ -154,20 +134,21 @@ def main():
             "display_map_tile_server" : "",
             "source_gpx_file":{
                 "have_data": False,
-                "GPS_latitude_decimal": 0,
-                "GPS_longitude_decimal": 0,
+                "GPS_latitude_decimal": 100000,
+                "GPS_longitude_decimal": 100000,
                 "gpx_device_time_offset_seconds": 0,
                 "gpx_file_path": "",
+                "gpx_file_sha512sum":""
             },
             "source_original_media_file":{
                 "have_data": False,
-                "GPS_latitude_decimal": 0,
-                "GPS_longitude_decimal": 0,
+                "GPS_latitude_decimal": 100000,
+                "GPS_longitude_decimal": 100000,
             },
             "source_manual_entry":{
                 "have_data": False,
-                "GPS_latitude_decimal": 0,
-                "GPS_longitude_decimal": 0,
+                "GPS_latitude_decimal": 100000,
+                "GPS_longitude_decimal": 100000,
             }
         },
         "constants": {
@@ -181,6 +162,50 @@ def main():
         #           ]
     }
 
+    #Get exif from image file
+    image = Image.open(image_path)
+    exif_data = image._getexif()
+    exif_data_ = image.getexif()
+
+    def _convert_to_degress(value):
+        d = float(value[0])
+        m = float(value[1])
+        s = float(value[2])
+        return d + (m / 60.0) + (s / 3600.0)
+
+    for tag_id, value in exif_data.items():
+        tag = TAGS.get(tag_id, tag_id)
+        if tag == 'ExposureTime':
+            data["capture_timestamp"]["capture_duration_seconds"] = float(Fraction(value))
+        elif tag == 'DateTimeOriginal':
+            dt_str = value
+            dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
+            utc_dt = dt.replace(tzinfo=timezone.utc)
+            data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]=int(utc_dt.timestamp())  # Unix epoch time
+        elif tag == 'GPSInfo':
+            gps_data = {}
+            for t in value:
+                sub_decoded = GPSTAGS.get(t, t)
+                if sub_decoded == "GPSLatitude":
+                    gps_latitude = value[t]
+                elif sub_decoded == "GPSLatitudeRef":
+                    gps_latitude_ref = value[t]
+                elif sub_decoded == "GPSLongitude":
+                    gps_longitude = value[t]
+                elif  sub_decoded == "GPSLongitudeRef":
+                    gps_longitude_ref = value[t]
+
+            if gps_latitude and gps_latitude_ref and gps_longitude and gps_longitude_ref:
+                lat = _convert_to_degress(gps_latitude)
+                if gps_latitude_ref != "N":
+                    lat = 0 - lat
+
+                lon = _convert_to_degress(gps_longitude)
+                if gps_longitude_ref != "E":
+                    lon = 0 - lon
+                data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"]=lat
+                data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"]=lon
+                data["geolocation_data"]["source_original_media_file"]["have_data"]=True
 
     def save_and_exit():
         output_path = Path(data["constants"]["image_file_full_path"]).with_suffix(".json")
@@ -346,11 +371,16 @@ def main():
                                          data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"],
                                          data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"],
                                          tk.DISABLED)
-
+    if data["geolocation_data"]["source_original_media_file"]["have_data"] == True:
+        source_file_lat=data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"]
+        source_file_long=data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"]
+    else:
+        source_file_lat=""
+        source_file_long=""
     gnss_original_media_file_source=Geolocation_source(gnss_location_data_frame,
                                          "Original media file:",
-                                         data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"],
-                                         data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"],
+                                         source_file_lat,
+                                         source_file_long,
                                          tk.DISABLED)
 
     gnss_manual_entry_source=Geolocation_source(gnss_location_data_frame,
