@@ -23,6 +23,8 @@
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
 #Add spellcheck in texts
+#Make computasionally heavy processes like searching for a point in gpx file in a sepparate thread asynchronously
+#remove reference to GPS and fix gnss/gpx wording in codebase and json output
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -57,6 +59,10 @@ def main():
     from fractions import Fraction
     import gpxpy
     import gpxpy.gpx
+    import nltk
+    from nltk.corpus import words
+
+    nltk.download('words')
 
     device_data = {
                 "lights": [ { "id": 0, "brand":"",        "name": "other"     },
@@ -240,6 +246,7 @@ def main():
     def update_texts(*args):
         data["texts"]["title"]=title.get()
         data["texts"]["description"]=description.get("1.0",'end-1c')
+        description.spell_check(words)
 
     texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
@@ -614,8 +621,17 @@ class TextScrollCombo(tk.Frame):
         scrollb.grid(row=1, column=1, sticky='nsew')
         self.txt['yscrollcommand'] = scrollb.set
 
-    def get(c,a,b):
-        return c.txt.get(a,b)
+    def get(self,a,b):
+        return self.txt.get(a,b)
+    def spell_check(self,words):
+        content=self.txt.get("1.0",'end-1c')
+        for tag in self.txt.tag_names():
+            self.txt.tag_delete(tag)
+        for word in content.split(' '):
+            if word.lower() not in words.words():
+                position = content.find(word)
+                self.txt.tag_add(word, f'1.{position}', f'1.{position + len(word)}')
+                self.txt.tag_config(word, underline=True, underlinefg='red')
 
 class TitledDropdown(tk.Frame):
 
