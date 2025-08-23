@@ -22,7 +22,6 @@
 #Make save button red if any data is unparsable
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
-#Add spellcheck in texts
 #Make computasionally heavy processes like searching for a point in gpx file in a sepparate thread asynchronously
 #remove reference to GPS and fix gnss/gpx wording in codebase and json output
 
@@ -35,6 +34,7 @@ from datetime import datetime
 from datetime import timezone
 import tkinter as tk
 from tkinter import ttk
+import re
 
 def main():
     if len(sys.argv) < 2:
@@ -61,8 +61,12 @@ def main():
     import gpxpy.gpx
     import nltk
     from nltk.corpus import words
+    from nltk.corpus import wordnet
+    global words
+    global wordnet
 
     nltk.download('words')
+    nltk.download('wordnet')
 
     device_data = {
                 "lights": [ { "id": 0, "brand":"",        "name": "other"     },
@@ -244,17 +248,22 @@ def main():
     # Texts #
     #########
     def update_texts(*args):
-        data["texts"]["title"]=title.get()
+        data["texts"]["title"]=title.get("1.0",'end-1c')
         data["texts"]["description"]=description.get("1.0",'end-1c')
-        description.spell_check(words)
+    def spellchecks_trigger(*args):
+        description.spell_check()
+        title.spell_check()
 
     texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
-    title = TitledEntry(texts_frame,"Title","",callback=update_texts)
-    description = TextScrollCombo(texts_frame,"Description:",callback=update_texts)
+    title = TitledTextEntry(texts_frame,"Title",callback=update_texts)
+    description = TitledTextEntry(texts_frame,"Description:",callback=update_texts,scroll=True)
 
-    title.grid       (row=0,column=0,sticky='we',padx=3,pady=3)
-    description.grid (row=1,column=0,sticky='we',padx=3,pady=3)
+    spell_check_button = tk.Button(texts_frame, text="Spell check", command=spellchecks_trigger)
+
+    title.grid              (row=0,column=0,sticky='we',padx=3,pady=3)
+    description.grid        (row=1,column=0,sticky='we',padx=3,pady=3)
+    spell_check_button.grid (row=2,column=0,sticky='w',padx=3,pady=3)
     texts_frame.grid_columnconfigure(0, weight=1)
 
     ####################
@@ -345,17 +354,6 @@ def main():
     global map_marker
     map_marker=None
 
-    gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
-                                         ("Original media file",
-                                          "GPX file",
-                                          "Manual entry")
-                                         ,0,callback=Geolocation_update)
-    human_name_to_source = {
-            "Original media file": "source_original_media_file",
-            "GPX file": "source_gpx_file",
-            "Manual entry": "source_manual_entry"
-    }
-    gpx_device_time_offset=TitledEntry(gnss_location_data_frame,"GPX device time offset (seconds)",data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],callback=Geolocation_update_time)
 
     map_tile_server_selection=TitledDropdown(gnss_location_data_frame,"Map tile server",(
         "OpenStreetMaps online",
@@ -371,6 +369,19 @@ def main():
             "Google Maps default online":  22,
             "Google Maps satelite online": 22
     }
+
+    gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
+                                         ("Original media file",
+                                          "GPX file",
+                                          "Manual entry")
+                                         ,0,callback=Geolocation_update)
+    human_name_to_source = {
+            "Original media file": "source_original_media_file",
+            "GPX file": "source_gpx_file",
+            "Manual entry": "source_manual_entry"
+    }
+    gpx_device_time_offset=TitledEntry(gnss_location_data_frame,"GPX device time offset (seconds)",data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],callback=Geolocation_update_time)
+
 
     #Sources
     gnss_gpx_file_source=Geolocation_source(gnss_location_data_frame,
@@ -568,8 +579,8 @@ def main():
     #editables frame layout
     texts_frame       .grid(row=0,column=0,sticky="we",pady=5)
     capture_timestamp .grid(row=1,column=0,sticky="we",pady=5)
-    save_frame        .grid(row=2,column=0,sticky="we",pady=5)
-    constants_frame   .grid(row=3,column=0,sticky="we",pady=5)
+    save_frame        .grid(row=3,column=0,sticky="we",pady=5)
+    constants_frame   .grid(row=4,column=0,sticky="we",pady=5)
     # light_table       .grid(row=6,column=0,sticky="we",pady=5)
 
     #This updates the default gnss source after the timestamp callback calls the gnss callback that looks through all the files
@@ -579,6 +590,12 @@ def main():
         gnss_source_selection.set(1)
     else:
         gnss_source_selection.set(2)
+
+    #Focus debug found online
+    #def debug_focus(event):
+    #    print("Focus now on:", event.widget)
+    #for widget in root.winfo_children():
+    #    widget.bind_all("<FocusIn>", debug_focus)
 
     root.mainloop()
 
@@ -595,10 +612,30 @@ def sha512Checksum(filePath):
             m.update(data)
         return m.hexdigest()
 
-#Got TextScrollCombo from stack overflow https://stackoverflow.com/questions/13832720/how-to-attach-a-scrollbar-to-a-text-widget
-class TextScrollCombo(tk.Frame):
+def spell_check(self):
+    content=self.text.get("1.0",'end-1c')
+    wn_lemmas = set(wordnet.all_lemma_names())
+    for tag in self.text.tag_names():
+        self.text.tag_delete(tag)
+    for word in content.split(' '):
+        word_to_check=re.sub(r'[^\w]', '', word.lower()).lower()
+        if wordnet.synsets(word_to_check) == [] :
+            if word_to_check not in words.words():
+                position = content.find(word)
+                self.text.tag_add(word, f'1.{position}', f'1.{position + len(word)}')
+                self.text.tag_config(word, underline=True, underlinefg='red')
 
-    def __init__(self, root_window, title, callback=None):
+def on_key_press(event):
+    if event.keysym == "Return":  # prevent newline
+        return "break"
+    if event.keysym == "Tab":  # move focus instead of inserting tab
+        event.widget.tk_focusNext().focus()
+        return "break"
+
+#Got TextScrollCombo from stack overflow https://stackoverflow.com/questions/13832720/how-to-attach-a-scrollbar-to-a-text-widget
+class TitledTextEntry(tk.Frame):
+
+    def __init__(self, root_window, title, callback=None, scroll=False):
 
         super().__init__(root_window)
 
@@ -607,31 +644,39 @@ class TextScrollCombo(tk.Frame):
         self.grid_columnconfigure(0, weight=1)
 
         # create a Text widget
-        self.txt = tk.Text(self,height=10)
-        self.txt.config(height=5)
+        if scroll==True:
+            height=5
+        else:
+            height=1
+
+        self.text = tk.Text(self)
+        self.text.config(height=height)
 
         if callback != None:
-            self.txt.bind('<KeyRelease>', callback)
+            self.text.bind('<KeyRelease>', callback)
 
-        tk.Label(self, text=title).grid(row=0, column=0, sticky="w")
-        self.txt.grid(row=1, column=0, sticky="we")
+        if scroll==True:
+            tk.Label(self, text=title).grid(row=0, column=0, sticky="w")
+            self.text.grid(row=1, column=0, sticky="we")
+        else:
+            tk.Label(self, text=title).grid(row=0, column=0, sticky="w")
+            self.text.grid(row=0, column=1, sticky="we")
 
-        # create a Scrollbar and associate it with txt
-        scrollb = tk.Scrollbar(self, command=self.txt.yview)
-        scrollb.grid(row=1, column=1, sticky='nsew')
-        self.txt['yscrollcommand'] = scrollb.set
+        if scroll==True:
+            # create a Scrollbar and associate it with txt
+            scrollbar = tk.Scrollbar(self, command=self.text.yview)
+            scrollbar.grid(row=1, column=1, sticky='nsew')
+            scrollbar.configure(takefocus=0)
+            self.text['yscrollcommand'] = scrollbar.set
+        else:
+            self.text.config(wrap='none')
+            self.text.bind("<Return>", on_key_press)
+        self.text.bind("<Tab>", on_key_press)
 
     def get(self,a,b):
-        return self.txt.get(a,b)
-    def spell_check(self,words):
-        content=self.txt.get("1.0",'end-1c')
-        for tag in self.txt.tag_names():
-            self.txt.tag_delete(tag)
-        for word in content.split(' '):
-            if word.lower() not in words.words():
-                position = content.find(word)
-                self.txt.tag_add(word, f'1.{position}', f'1.{position + len(word)}')
-                self.txt.tag_config(word, underline=True, underlinefg='red')
+        return self.text.get(a,b)
+    def spell_check(self):
+        spell_check(self)
 
 class TitledDropdown(tk.Frame):
 
@@ -662,16 +707,18 @@ class TitledEntry(tk.Frame):
         super().__init__(root_window)
 
         self.titled_entry_var=tk.StringVar(value=init_text)
-        self.titled_entry = tk.Entry(self,state=input_state,textvariable=self.titled_entry_var,width=width)
+        self.text = tk.Entry(self,state=input_state,textvariable=self.titled_entry_var,width=width)
         if callback != None:
             self.titled_entry_var.trace_add("write", callback)
 
         self.label=tk.Label(self, text=text)
         self.label.grid(row=0,column=0,sticky='w')
-        self.titled_entry.grid(row=0,column=1,sticky='we')
+        self.text.grid(row=0,column=1,sticky='we')
         self.grid_columnconfigure(1, weight=1)
-    def get(c):
-        return c.titled_entry.get()
+    def get(self):
+        return self.text.get()
+    def spell_check(self):
+        spell_check(self)
 
 class TitledTable(tk.Frame):
 
@@ -697,7 +744,7 @@ class TitledTable(tk.Frame):
                 self.treeview.column(header[i], width = widths[i], anchor=anchors[i])
 
 
-        self.scrollb = tk.Scrollbar(self, command=self.treeview.yview)
+        self.scrollbar = tk.Scrollbar(self, command=self.treeview.yview)
 
         self.utility_frame=tk.Frame(self)
         self.modify_button=tk.Button(self.utility_frame,text="Modify",width=8)
@@ -708,8 +755,9 @@ class TitledTable(tk.Frame):
 
         tk.Label(self, text=text).grid(row=0,column=0,sticky="w")
         self.treeview.grid(row=1,column=0,sticky='we')
-        self.scrollb.grid(row=1,column=1,sticky='ns')
-        self.treeview['yscrollcommand'] = self.scrollb.set
+        self.scrollbar.grid(row=1,column=1,sticky='ns')
+        self.scrollbar.configure(takefocus=0)
+        self.treeview['yscrollcommand'] = self.scrollbar.set
         self.utility_frame.grid(row=1,column=2,sticky='n')
 
 class Geolocation_source(tk.Frame):
@@ -795,6 +843,7 @@ def event_timeline(window,events,plt,np,FigureCanvasTkAgg,background_color):
     ax.spines['bottom'].set_position(('data', -8000))
 
     canvas = FigureCanvasTkAgg(fig, master = window)
+    canvas.get_tk_widget().configure(takefocus=0)
     canvas.draw()
     plt.close()
 
