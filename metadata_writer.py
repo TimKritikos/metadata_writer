@@ -23,7 +23,7 @@
 #Add timezone setting for exif date
 #Change the background of TitledFrames from the wnidow background
 #Make computasionally heavy processes like searching for a point in gpx file in a sepparate thread asynchronously
-#remove reference to GPS and fix gnss/gpx wording in codebase and json output
+#Do doable TODOs
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -142,23 +142,24 @@ def main():
             "have_data": False,
             "valid_data_source": "uninitialised",
             "display_map_tile_server" : "",
-            "source_gpx_file":{
+            "source_gnss_track_file":{
                 "have_data": False,
-                "GPS_latitude_decimal": 100000,
-                "GPS_longitude_decimal": 100000,
-                "gpx_device_time_offset_seconds": 0,
-                "gpx_file_path": "",
-                "gpx_file_sha512sum":""
+                "Latitude_decimal": 100000,
+                "Longitude_decimal": 100000,
+                "gnss_device_time_offset_seconds": 0,
+                "file_path": "",
+                "file_sha512sum":"",
+                "file_type": ""
             },
             "source_original_media_file":{
                 "have_data": False,
-                "GPS_latitude_decimal": 100000,
-                "GPS_longitude_decimal": 100000,
+                "Latitude_decimal": 100000,
+                "Longitude_decimal": 100000,
             },
             "source_manual_entry":{
                 "have_data": False,
-                "GPS_latitude_decimal": 100000,
-                "GPS_longitude_decimal": 100000,
+                "Latitude_decimal": 100000,
+                "Longitude_decimal": 100000,
             }
         },
         "constants": {
@@ -177,7 +178,7 @@ def main():
     exif_data = image._getexif()
     exif_data_ = image.getexif()
 
-    def _convert_to_degress(value):
+    def nautical_to_decimal(value):
         d = float(value[0])
         m = float(value[1])
         s = float(value[2])
@@ -193,28 +194,28 @@ def main():
             utc_dt = dt.replace(tzinfo=timezone.utc)
             data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]=int(utc_dt.timestamp())  # Unix epoch time
         elif tag == 'GPSInfo':
-            gps_data = {}
             for t in value:
                 sub_decoded = GPSTAGS.get(t, t)
                 if sub_decoded == "GPSLatitude":
-                    gps_latitude = value[t]
+                    latitude_nautical = value[t]
                 elif sub_decoded == "GPSLatitudeRef":
-                    gps_latitude_ref = value[t]
+                    latitude_nautical_ref = value[t]
                 elif sub_decoded == "GPSLongitude":
-                    gps_longitude = value[t]
+                    longitude_nautical = value[t]
                 elif  sub_decoded == "GPSLongitudeRef":
-                    gps_longitude_ref = value[t]
+                    longitude_nautical_ref = value[t]
 
-            if gps_latitude and gps_latitude_ref and gps_longitude and gps_longitude_ref:
-                lat = _convert_to_degress(gps_latitude)
-                if gps_latitude_ref != "N":
-                    lat = 0 - lat
+            if latitude_nautical and latitude_nautical_ref and longitude_nautical and longitude_nautical_ref:
+                latitude_decimal = nautical_to_decimal(latitude_nautical)
+                if latitude_nautical_ref != "N":
+                    latitude_decimal = 0 - latitude_decimal
 
-                lon = _convert_to_degress(gps_longitude)
-                if gps_longitude_ref != "E":
-                    lon = 0 - lon
-                data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"]=lat
-                data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"]=lon
+                longitude_decimal = nautical_to_decimal(longitude_nautical)
+                if longitude_nautical_ref != "E":
+                    longitude_decimal = 0 - longitude_decimal
+
+                data["geolocation_data"]["source_original_media_file"]["Latitude_decimal"]=latitude_decimal
+                data["geolocation_data"]["source_original_media_file"]["Longitude_decimal"]=longitude_decimal
                 data["geolocation_data"]["source_original_media_file"]["have_data"]=True
 
     def save_and_exit():
@@ -273,16 +274,17 @@ def main():
         gpx_file = open(filepath, 'r')
         gpx = gpxpy.parse(gpx_file)
         point_found=0
-        data["geolocation_data"]["source_gpx_file"]["have_data"]=False
+        data["geolocation_data"]["source_gnss_track_file"]["have_data"]=False
         for track in gpx.tracks:
             for segment in track.segments:
                 for point in segment.points:
-                    if(point.time == datetime.fromtimestamp(data["events"][0]["timestamp"]-data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],tz=timezone.utc)): #TODO don't hardcode this value
-                        data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"]=point.longitude
-                        data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"]=point.latitude
-                        data["geolocation_data"]["source_gpx_file"]["gpx_file_path"]=filepath
-                        data["geolocation_data"]["source_gpx_file"]["gpx_file_sha512sum"]=sha512Checksum(filepath)
-                        data["geolocation_data"]["source_gpx_file"]["have_data"]=True
+                    if(point.time == datetime.fromtimestamp(data["events"][0]["timestamp"]-data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"],tz=timezone.utc)): #TODO don't hardcode this value
+                        data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"]=point.longitude
+                        data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"]=point.latitude
+                        data["geolocation_data"]["source_gnss_track_file"]["file_path"]=filepath
+                        data["geolocation_data"]["source_gnss_track_file"]["file_sha512sum"]=sha512Checksum(filepath)
+                        data["geolocation_data"]["source_gnss_track_file"]["file_type"]="gpx"
+                        data["geolocation_data"]["source_gnss_track_file"]["have_data"]=True
                         point_found=1
                         break
                 if point_found==1:
@@ -295,31 +297,31 @@ def main():
             return 0
 
     def Geolocation_update(*args):
-        manual_lat=gnss_manual_entry_source.get_lat()
-        manual_long=gnss_manual_entry_source.get_long()
+        manual_latitude=geolocation_manual_entry_source.get_latitude()
+        manual_longitude=geolocation_manual_entry_source.get_longitude()
         data["geolocation_data"]["display_map_tile_server"]=map_tile_server_selection.get()
-        data["geolocation_data"]["valid_data_source"]=human_name_to_source[gnss_source_selection.get()]
+        data["geolocation_data"]["valid_data_source"]=human_name_to_source[geolocation_source_selection.get()]
 
         map_widget.set_tile_server(tilemap_url_option_map[data["geolocation_data"]["display_map_tile_server"]], max_zoom=tilemap_maxzoom_option_map[data["geolocation_data"]["display_map_tile_server"]])
 
         try:
-            manual_lat=float(manual_lat)
-            manual_long=float(manual_long)
-            data["geolocation_data"]["source_manual_entry"]["GPS_latitude_decimal"]=manual_lat
-            data["geolocation_data"]["source_manual_entry"]["GPS_longitude_decimal"]=manual_long
+            manual_latitude=float(manual_latitude)
+            manual_longitude=float(manual_longitude)
+            data["geolocation_data"]["source_manual_entry"]["Latitude_decimal"]=manual_latitude
+            data["geolocation_data"]["source_manual_entry"]["Longitude_decimal"]=manual_longitude
             data["geolocation_data"]["source_manual_entry"]["have_data"]=True
         except ValueError as e:
             data["geolocation_data"]["source_manual_entry"]["have_data"]=False
 
         global map_marker
         if data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["have_data"] == True:
-            new_lat=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_latitude_decimal"]
-            new_long=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["GPS_longitude_decimal"]
+            new_latitude=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["Latitude_decimal"]
+            new_longitude=data["geolocation_data"][data["geolocation_data"]["valid_data_source"]]["Longitude_decimal"]
             if map_marker == None:
-                map_marker=map_widget.set_marker(new_lat,new_long)
+                map_marker=map_widget.set_marker(new_latitude,new_longitude)
             else:
-                map_marker.set_position(new_lat,new_long)
-            map_widget.set_position(new_lat,new_long)
+                map_marker.set_position(new_latitude,new_longitude)
+            map_widget.set_position(new_latitude,new_longitude)
             data["geolocation_data"]["have_data"]=True
         else:
             data["geolocation_data"]["have_data"]=False
@@ -329,33 +331,33 @@ def main():
 
     def Geolocation_update_time(*args):
         try:
-            data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"]=float(gpx_device_time_offset.get())
+            data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=float(gnss_device_time_offset.get())
         except ValueError as e:
-            data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"]=0
-        for file in os.listdir("/home/user/gnss_test/"):
+            data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=0
+        for file in os.listdir("/home/user/gnss_test/"): #TODO TODO TODO TODO
             if file.endswith(".gpx"):
                 #print("Trying "+str(os.path.join("/home/user/gnss_test/", file)))
                 if try_gpx_file(os.path.join("/home/user/gnss_test/", file)) == 0:
                     break
-        if data["geolocation_data"]["source_gpx_file"]["have_data"] == True :
-            gnss_gpx_file_source.update_lat( data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"])
-            gnss_gpx_file_source.update_long( data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+        if data["geolocation_data"]["source_gnss_track_file"]["have_data"] == True :
+            geolocation_gnss_track_file_source.update_latitude( data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"])
+            geolocation_gnss_track_file_source.update_longitude( data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"])
         else:
-            gnss_gpx_file_source.update_lat("")
-            gnss_gpx_file_source.update_long("")
+            geolocation_gnss_track_file_source.update_latitude("")
+            geolocation_gnss_track_file_source.update_longitude("")
         Geolocation_update()
 
-    gnss_location_data_frame=TitledFrame(root,[("[3]", ("TkDefaultFont", 12, "bold")),("Geolocation data", ("TkDefaultFont", 10))])
+    geolocation_data_frame=TitledFrame(root,[("[3]", ("TkDefaultFont", 12, "bold")),("Geolocation data", ("TkDefaultFont", 10))])
 
     #Map Widget
-    map_widget = tkintermapview.TkinterMapView(gnss_location_data_frame, width=400, height=250, corner_radius=10)
-    map_widget.set_position(data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"], data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"])
+    map_widget = tkintermapview.TkinterMapView(geolocation_data_frame, width=400, height=250, corner_radius=10)
+    map_widget.set_position(data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"], data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"])
     map_widget.set_zoom(15)
     global map_marker
     map_marker=None
 
 
-    map_tile_server_selection=TitledDropdown(gnss_location_data_frame,"Map tile server",(
+    map_tile_server_selection=TitledDropdown(geolocation_data_frame,"Map tile server",(
         "OpenStreetMaps online",
         "Google Maps default online",
         "Google Maps satelite online"),0,callback=Geolocation_update)
@@ -370,50 +372,50 @@ def main():
             "Google Maps satelite online": 22
     }
 
-    gnss_source_selection=TitledDropdown(gnss_location_data_frame,"Select geolocation source:",
+    geolocation_source_selection=TitledDropdown(geolocation_data_frame,"Select geolocation source:",
                                          ("Original media file",
                                           "GPX file",
                                           "Manual entry")
                                          ,0,callback=Geolocation_update)
     human_name_to_source = {
             "Original media file": "source_original_media_file",
-            "GPX file": "source_gpx_file",
+            "GPX file": "source_gnss_track_file",
             "Manual entry": "source_manual_entry"
     }
-    gpx_device_time_offset=TitledEntry(gnss_location_data_frame,"GPX device time offset (seconds)",data["geolocation_data"]["source_gpx_file"]["gpx_device_time_offset_seconds"],callback=Geolocation_update_time)
+    gnss_device_time_offset=TitledEntry(geolocation_data_frame,"GNSS device time offset (seconds)",data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"],callback=Geolocation_update_time)
 
 
     #Sources
-    gnss_gpx_file_source=Geolocation_source(gnss_location_data_frame,
+    geolocation_gnss_track_file_source=Geolocation_source(geolocation_data_frame,
                                          "GPX file:",
-                                         data["geolocation_data"]["source_gpx_file"]["GPS_latitude_decimal"],
-                                         data["geolocation_data"]["source_gpx_file"]["GPS_longitude_decimal"],
+                                         data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"],
+                                         data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"],
                                          tk.DISABLED)
     if data["geolocation_data"]["source_original_media_file"]["have_data"] == True:
-        source_file_lat=data["geolocation_data"]["source_original_media_file"]["GPS_latitude_decimal"]
-        source_file_long=data["geolocation_data"]["source_original_media_file"]["GPS_longitude_decimal"]
+        source_file_latitude=data["geolocation_data"]["source_original_media_file"]["Latitude_decimal"]
+        source_file_longitude=data["geolocation_data"]["source_original_media_file"]["Longitude_decimal"]
     else:
-        source_file_lat=""
-        source_file_long=""
-    gnss_original_media_file_source=Geolocation_source(gnss_location_data_frame,
+        source_file_latitude=""
+        source_file_longitude=""
+    geolocation_original_media_file_source=Geolocation_source(geolocation_data_frame,
                                          "Original media file:",
-                                         source_file_lat,
-                                         source_file_long,
+                                         source_file_latitude,
+                                         source_file_longitude,
                                          tk.DISABLED)
 
-    gnss_manual_entry_source=Geolocation_source(gnss_location_data_frame,
+    geolocation_manual_entry_source=Geolocation_source(geolocation_data_frame,
                                         "Original media file:",
                                         "",
                                         "",
                                         tk.NORMAL, callback=Geolocation_update)
 
-    map_widget.grid                      (row=0,column=0,pady=(0,3),padx=5)
-    map_tile_server_selection.grid       (row=1,column=0,pady=(5,2),sticky='we')
-    gnss_source_selection.grid           (row=2,column=0,pady=(2,2),sticky='we')
-    gpx_device_time_offset.grid          (row=3,column=0,pady=(2,5),sticky='w')
-    gnss_gpx_file_source.grid            (row=4,column=0,sticky='we')
-    gnss_original_media_file_source.grid (row=5,column=0,sticky='we')
-    gnss_manual_entry_source.grid        (row=6,column=0,sticky='we')
+    map_widget.grid                             (row=0,column=0,pady=(0,3),padx=5)
+    map_tile_server_selection.grid              (row=1,column=0,pady=(5,2),sticky='we')
+    geolocation_source_selection.grid           (row=2,column=0,pady=(2,2),sticky='we')
+    gnss_device_time_offset.grid                (row=3,column=0,pady=(2,5),sticky='w')
+    geolocation_gnss_track_file_source.grid     (row=4,column=0,sticky='we')
+    geolocation_original_media_file_source.grid (row=5,column=0,sticky='we')
+    geolocation_manual_entry_source.grid        (row=6,column=0,sticky='we')
 
     #Geolocation_update_time() #Note, not needed because the capture timestamp callback will call it
 
@@ -573,7 +575,7 @@ def main():
     #Root frame layout
     display_image_frame      .grid(row=0,column=0,sticky='n')
     editables                .grid(row=0,column=1,rowspan=2,sticky='ns')
-    gnss_location_data_frame .grid(row=1,column=0)
+    geolocation_data_frame   .grid(row=1,column=0)
     timeline_frame           .grid(row=2,column=0,columnspan=2)
 
     #editables frame layout
@@ -583,13 +585,13 @@ def main():
     constants_frame   .grid(row=4,column=0,sticky="we",pady=5)
     # light_table       .grid(row=6,column=0,sticky="we",pady=5)
 
-    #This updates the default gnss source after the timestamp callback calls the gnss callback that looks through all the files
+    #This updates the default geolocation source after the timestamp callback calls the geolocation callback that looks through all the files
     if data["geolocation_data"]["source_original_media_file"]["have_data"] == True :
-        gnss_source_selection.set(0)
-    elif data["geolocation_data"]["source_gpx_file"]["have_data"] == True :
-        gnss_source_selection.set(1)
+        geolocation_source_selection.set(0)
+    elif data["geolocation_data"]["source_gnss_track_file"]["have_data"] == True :
+        geolocation_source_selection.set(1)
     else:
-        gnss_source_selection.set(2)
+        geolocation_source_selection.set(2)
 
     #Focus debug found online
     #def debug_focus(event):
@@ -793,13 +795,13 @@ class Geolocation_source(tk.Frame):
         if callback != None:
             self.lat_var.trace_add("write", callback)
             self.long_var.trace_add("write", callback)
-    def get_lat(self):
+    def get_latitude(self):
         return self.lat_var.get()
-    def get_long(self):
+    def get_longitude(self):
         return self.long_var.get()
-    def update_lat(self,value):
+    def update_latitude(self,value):
         self.lat_var.set(value)
-    def update_long(self,value):
+    def update_longitude(self,value):
         self.long_var.set(value)
     def paste_callback(self):
         clipboard=self.root.clipboard_get()
