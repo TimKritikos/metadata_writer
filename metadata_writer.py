@@ -334,7 +334,7 @@ def main():
             data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=float(gnss_device_time_offset.get())
         except ValueError as e:
             data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=0
-        for file in os.listdir("/home/user/gnss_test/"): #TODO TODO TODO TODO
+        for file in os.listdir(os.path.dirname(data["constants"]["image_file_full_path"])):
             if file.endswith(".gpx"):
                 #print("Trying "+str(os.path.join("/home/user/gnss_test/", file)))
                 if try_gpx_file(os.path.join("/home/user/gnss_test/", file)) == 0:
