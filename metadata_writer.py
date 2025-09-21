@@ -232,12 +232,13 @@ def main():
     background_color=root.cget('bg')
 
 
-    editables=Frame()
+    center_column=Frame(root)
+    left_column=Frame(root)
 
     #################
     # display image #
     #################
-    display_image_frame=TitledFrame(root, [("Image", ("TkDefaultFont", 10))] )
+    display_image_frame=TitledFrame(left_column, [("Image", ("TkDefaultFont", 10))] )
     img = Image.open(image_path)
     img.thumbnail((400, 400))  # Resize for display
     photo = ImageTk.PhotoImage(img)
@@ -255,7 +256,7 @@ def main():
         description.spell_check()
         title.spell_check()
 
-    texts_frame=TitledFrame(editables,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
+    texts_frame=TitledFrame(center_column,[("[1]", ("TkDefaultFont", 12, "bold")),("Texts", ("TkDefaultFont", 10))])
 
     title = TitledTextEntry(texts_frame,"Title",callback=update_texts)
     description = TitledTextEntry(texts_frame,"Description:",callback=update_texts,scroll=True)
@@ -347,17 +348,19 @@ def main():
             geolocation_gnss_track_file_source.update_longitude("")
         Geolocation_update()
 
-    geolocation_data_frame=TitledFrame(root,[("[3]", ("TkDefaultFont", 12, "bold")),("Geolocation data", ("TkDefaultFont", 10))])
+    geolocation_data_frame=TitledFrame(center_column,[("[3]", ("TkDefaultFont", 12, "bold")),("Geolocation data", ("TkDefaultFont", 10))])
+    upper_geolocation_data_frame=Frame(geolocation_data_frame)
+    lower_geolocation_data_frame=Frame(geolocation_data_frame)
 
     #Map Widget
-    map_widget = tkintermapview.TkinterMapView(geolocation_data_frame, width=400, height=250, corner_radius=10)
+    map_widget = tkintermapview.TkinterMapView(upper_geolocation_data_frame, width=400, height=250, corner_radius=10)
     map_widget.set_position(data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"], data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"])
     map_widget.set_zoom(15)
     global map_marker
     map_marker=None
 
 
-    map_tile_server_selection=TitledDropdown(geolocation_data_frame,"Map tile server",(
+    map_tile_server_selection=TitledDropdown(upper_geolocation_data_frame,"Map tile server",(
         "OpenStreetMaps online",
         "Google Maps default online",
         "Google Maps satellite online"),0,callback=Geolocation_update)
@@ -372,7 +375,7 @@ def main():
             "Google Maps satellite online": 22
     }
 
-    geolocation_source_selection=TitledDropdown(geolocation_data_frame,"Select geolocation source:",
+    geolocation_source_selection=TitledDropdown(upper_geolocation_data_frame,"Select geolocation source:",
                                          ("Original media file",
                                           "GPX file",
                                           "Manual entry")
@@ -382,11 +385,10 @@ def main():
             "GPX file": "source_gnss_track_file",
             "Manual entry": "source_manual_entry"
     }
-    gnss_device_time_offset=TitledEntry(geolocation_data_frame,"GNSS device time offset (seconds)",data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"],callback=Geolocation_update_time)
 
 
     #Sources
-    geolocation_gnss_track_file_source=Geolocation_source(geolocation_data_frame,
+    geolocation_gnss_track_file_source=Geolocation_source(lower_geolocation_data_frame,
                                          "GPX file:",
                                          data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"],
                                          data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"],
@@ -397,32 +399,38 @@ def main():
     else:
         source_file_latitude=""
         source_file_longitude=""
-    geolocation_original_media_file_source=Geolocation_source(geolocation_data_frame,
+    gnss_device_time_offset=TitledEntry(lower_geolocation_data_frame,"GNSS device time offset (seconds)",data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"],callback=Geolocation_update_time)
+
+    geolocation_original_media_file_source=Geolocation_source(lower_geolocation_data_frame,
                                          "Original media file:",
                                          source_file_latitude,
                                          source_file_longitude,
                                          tk.DISABLED)
 
-    geolocation_manual_entry_source=Geolocation_source(geolocation_data_frame,
+    geolocation_manual_entry_source=Geolocation_source(lower_geolocation_data_frame,
                                         "Original media file:",
                                         "",
                                         "",
                                         tk.NORMAL, callback=Geolocation_update)
 
-    map_widget.grid                             (row=0,column=0,pady=(0,3),padx=5)
-    map_tile_server_selection.grid              (row=1,column=0,pady=(5,2),sticky='we')
-    geolocation_source_selection.grid           (row=2,column=0,pady=(2,2),sticky='we')
-    gnss_device_time_offset.grid                (row=3,column=0,pady=(2,5),sticky='w')
-    geolocation_gnss_track_file_source.grid     (row=4,column=0,sticky='we')
-    geolocation_original_media_file_source.grid (row=5,column=0,sticky='we')
-    geolocation_manual_entry_source.grid        (row=6,column=0,sticky='we')
+    upper_geolocation_data_frame.grid(row=0,column=0)
+    lower_geolocation_data_frame.grid(row=1,column=0,sticky='w')
+
+    map_widget.grid                             (row=0,column=0,pady=(0,3),rowspan=2)
+    map_tile_server_selection.grid              (row=0,column=1,pady=(5,2),sticky='we',padx=5)
+    geolocation_source_selection.grid           (row=1,column=1,pady=(2,2),sticky='we',padx=5)
+
+    geolocation_gnss_track_file_source.grid     (row=0,column=0,sticky='we')
+    gnss_device_time_offset.grid                (row=1,column=0,pady=(2,5),sticky='w')
+    geolocation_original_media_file_source.grid (row=2,column=0,sticky='we')
+    geolocation_manual_entry_source.grid        (row=3,column=0,sticky='we')
 
     #Geolocation_update_time() #Note, not needed because the capture timestamp callback will call it
 
     #####################
     # Capture timestamp #
     #####################
-    capture_timestamp=TitledFrame(editables,[("[2]", ("TkDefaultFont", 12, "bold")),("Capture timestamp", ("TkDefaultFont", 10))])
+    capture_timestamp=TitledFrame(center_column,[("[2]", ("TkDefaultFont", 12, "bold")),("Capture timestamp", ("TkDefaultFont", 10))])
 
     #Callback for updating the explanation
     def update_capture_timestamp_description(*args):
@@ -503,7 +511,7 @@ def main():
     #############
     # Constants #
     #############
-    constants_frame=TitledFrame(editables,[("Constants", ("TkDefaultFont", 10))])
+    constants_frame=TitledFrame(left_column,[("Constants", ("TkDefaultFont", 10))])
 
     sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
     sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
@@ -521,7 +529,7 @@ def main():
     ########
     # Save #
     ########
-    save_frame=TitledFrame(editables,[("[4]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
+    save_frame=TitledFrame(left_column,[("[4]", ("TkDefaultFont", 12, "bold")),("Save", ("TkDefaultFont", 10))])
     save_button = tk.Button(save_frame, text="Write and Exit", command=save_and_exit)
     save_button.config(bg='green')
 
@@ -569,20 +577,23 @@ def main():
     #         if device["id"] == item["source"]:
     #             table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
 
-    # light_table=TitledTable(editables,"List of lights / flashes used:",table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
+    # light_table=TitledTable(center_column,"List of lights / flashes used:",table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
 
 
     #Root frame layout
-    display_image_frame      .grid(row=0,column=0,sticky='n')
-    editables                .grid(row=0,column=1,rowspan=2,sticky='ns')
-    geolocation_data_frame   .grid(row=1,column=0)
-    timeline_frame           .grid(row=2,column=0,columnspan=2)
+    left_column    .grid(row=0,column=0,sticky='ns',padx=(10,0))
+    center_column  .grid(row=0,column=1,sticky='ns',padx=(10,10))
+    timeline_frame .grid(row=1,column=0,columnspan=2)
 
-    #editables frame layout
-    texts_frame       .grid(row=0,column=0,sticky="we",pady=5)
-    capture_timestamp .grid(row=1,column=0,sticky="we",pady=5)
-    save_frame        .grid(row=3,column=0,sticky="we",pady=5)
-    constants_frame   .grid(row=4,column=0,sticky="we",pady=5)
+    #left_column frame layout
+    display_image_frame .grid(row=0,column=0,sticky='n')
+    constants_frame     .grid(row=1,column=0,sticky="we",pady=5)
+    save_frame          .grid(row=2,column=0,sticky="we",pady=5)
+
+    #center_column frame layout
+    texts_frame            .grid(row=0,column=0,sticky="we",pady=5)
+    capture_timestamp      .grid(row=1,column=0,sticky="we",pady=5)
+    geolocation_data_frame .grid(row=2,column=0,sticky="we",pady=5)
     # light_table       .grid(row=6,column=0,sticky="we",pady=5)
 
     #This updates the default geolocation source after the timestamp callback calls the geolocation callback that looks through all the files
