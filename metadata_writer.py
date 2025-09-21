@@ -21,8 +21,8 @@
 #Weather image is cropped
 #Make save button red if any data is unparsable
 #Add timezone setting for exif date
-#Change the background of TitledFrames from the wnidow background
-#Make computasionally heavy processes like searching for a point in gpx file in a sepparate thread asynchronously
+#Change the background of TitledFrames from the window background
+#Make computationally heavy processes like searching for a point in gpx file in a separate thread asynchronously
 #Do doable TODOs
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
@@ -360,16 +360,16 @@ def main():
     map_tile_server_selection=TitledDropdown(geolocation_data_frame,"Map tile server",(
         "OpenStreetMaps online",
         "Google Maps default online",
-        "Google Maps satelite online"),0,callback=Geolocation_update)
+        "Google Maps satellite online"),0,callback=Geolocation_update)
     tilemap_url_option_map={
             "OpenStreetMaps online":       "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
             "Google Maps default online":  "https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga",
-            "Google Maps satelite online": "https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga"
+            "Google Maps satellite online": "https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga"
     }
     tilemap_maxzoom_option_map={
             "OpenStreetMaps online":       20,
             "Google Maps default online":  22,
-            "Google Maps satelite online": 22
+            "Google Maps satellite online": 22
     }
 
     geolocation_source_selection=TitledDropdown(geolocation_data_frame,"Select geolocation source:",
@@ -665,7 +665,7 @@ class TitledTextEntry(tk.Frame):
             self.text.grid(row=0, column=1, sticky="we")
 
         if scroll==True:
-            # create a Scrollbar and associate it with txt
+            # create a Scrollbar and associate it with self.text
             scrollbar = tk.Scrollbar(self, command=self.text.yview)
             scrollbar.grid(row=1, column=1, sticky='nsew')
             scrollbar.configure(takefocus=0)
