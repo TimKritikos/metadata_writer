@@ -268,6 +268,87 @@ def main():
     spell_check_button.grid (row=2,column=0,sticky='w',padx=3,pady=3)
     texts_frame.grid_columnconfigure(0, weight=1)
 
+    #####################
+    # Capture timestamp #
+    #####################
+    capture_timestamp=TitledFrame(center_column,[("[2]", ("TkDefaultFont", 12, "bold")),("Capture timestamp", ("TkDefaultFont", 10))])
+
+    #Callback for updating the explanation
+    def update_capture_timestamp_description(*args):
+        image_creation_event_id=0#TODO: don't hardcode this value
+        try:
+            data["capture_timestamp"]["capture_start_time_offset_seconds"] = float(cap_offset_var.get())
+            #If the capture time changes, update it and a list of thing that depend on it
+            if data["events"][image_creation_event_id]["timestamp"] != int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]):
+                data["events"][image_creation_event_id]["timestamp"] = int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"])
+                Geolocation_update_time()
+            data["capture_timestamp"]["capture_duration_seconds"] = float(cap_duration_var.get())
+            data["capture_timestamp"]["single_capture_picture"] = one_capture_var.get()
+            data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] = float(cap_accuracy_var.get())
+        except ValueError as e:
+            explanation_var.set("Invalid values!")
+            explanation.config(bg="red")
+            return
+
+        date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]+int(cap_offset_var.get())))
+
+        if data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] != 0.0:
+            acc_string=" plus/minus "+str(data["events"][image_creation_event_id]["timestamp_accuracy_seconds"])+" seconds"
+        else:
+            acc_string=""
+
+        if data["capture_timestamp"]["capture_duration_seconds"] == False:
+            explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " + date + acc_string + " and took " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " seconds to capture" )
+        else:
+            explanation_var.set("An image taken at " + date + acc_string + " with a " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " second shutter speed")
+        explanation.config(bg="grey64")
+
+    # explanation text
+    explanation_var = tk.StringVar()
+    explanation = tk.Label(capture_timestamp, textvariable=explanation_var, wraplength=450)
+    explanation.config(width=70)
+
+    # Original capture date
+    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]) ))
+    cap_start_label=tk.Label(capture_timestamp, text="Original capture start date:")
+    cap_start = tk.Entry(capture_timestamp,textvariable=cap_start_var,state=tk.DISABLED)
+
+    # Capture date offset
+    cap_offset_var = tk.StringVar(value=data["capture_timestamp"]["capture_start_time_offset_seconds"])
+    cap_offset_var.trace_add("write", update_capture_timestamp_description)
+    cap_offset_label=tk.Label(capture_timestamp, text="Capture start date offset seconds:")
+    cap_offset = tk.Entry(capture_timestamp,textvariable=cap_offset_var)
+
+    # Capture duration
+    cap_duration_var = tk.StringVar(value=str(data["capture_timestamp"]["capture_duration_seconds"]))
+    cap_duration_var.trace_add("write", update_capture_timestamp_description)
+    cap_duration_label=tk.Label(capture_timestamp, text="Capture duration (seconds):")
+    cap_duration = tk.Entry(capture_timestamp,textvariable=cap_duration_var)
+
+    # Capture accuracy
+    cap_accuracy_var = tk.StringVar(value=str(data["events"][0]["timestamp_accuracy_seconds"])) #TODO: don't hardcode this value
+    cap_accuracy_var.trace_add("write", update_capture_timestamp_description)
+    cap_accuracy_label=tk.Label(capture_timestamp, text="Capture start accuracy (±seconds):")
+    cap_accuracy = tk.Entry(capture_timestamp,textvariable=cap_accuracy_var)
+
+    # One shot checkbox
+    one_capture_var = tk.BooleanVar()
+    one_capture_var.trace_add( "write", update_capture_timestamp_description)
+    one_capture = tk.Checkbutton(capture_timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
+    one_capture.select() #this also calls update_capture_timestamp_description. If removed place a call to it to write the initial value on the text box
+
+
+    cap_start_label.grid     (row=0,column=0,padx=3,pady=3)
+    cap_start.grid           (row=0,column=1,padx=3,pady=3)
+    cap_duration_label.grid  (row=0,column=2,padx=3,pady=3)
+    cap_duration.grid        (row=0,column=3,padx=3,pady=3)
+    cap_offset_label.grid    (row=1,column=0,padx=3,pady=3)
+    cap_offset.grid          (row=1,column=1,padx=3,pady=3)
+    cap_accuracy_label.grid  (row=1,column=2,padx=3,pady=3)
+    cap_accuracy.grid        (row=1,column=3,padx=3,pady=3)
+    one_capture.grid         (row=2,column=3,padx=3,pady=3)
+    explanation.grid         (row=2,column=0,padx=3,pady=3,columnspan=3)
+
     ####################
     # Geolocation data #
     ####################
@@ -426,87 +507,6 @@ def main():
     geolocation_manual_entry_source.grid        (row=3,column=0,sticky='we')
 
     #Geolocation_update_time() #Note, not needed because the capture timestamp callback will call it
-
-    #####################
-    # Capture timestamp #
-    #####################
-    capture_timestamp=TitledFrame(center_column,[("[2]", ("TkDefaultFont", 12, "bold")),("Capture timestamp", ("TkDefaultFont", 10))])
-
-    #Callback for updating the explanation
-    def update_capture_timestamp_description(*args):
-        image_creation_event_id=0#TODO: don't hardcode this value
-        try:
-            data["capture_timestamp"]["capture_start_time_offset_seconds"] = float(cap_offset_var.get())
-            #If the capture time changes, update it and a list of thing that depend on it
-            if data["events"][image_creation_event_id]["timestamp"] != int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]):
-                data["events"][image_creation_event_id]["timestamp"] = int(data["capture_timestamp"]["capture_start_time_offset_seconds"])+int(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"])
-                Geolocation_update_time()
-            data["capture_timestamp"]["capture_duration_seconds"] = float(cap_duration_var.get())
-            data["capture_timestamp"]["single_capture_picture"] = one_capture_var.get()
-            data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] = float(cap_accuracy_var.get())
-        except ValueError as e:
-            explanation_var.set("Invalid values!")
-            explanation.config(bg="red")
-            return
-
-        date=time.strftime('%A %-d of %B %Y %H:%M:%S',time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]+int(cap_offset_var.get())))
-
-        if data["events"][image_creation_event_id]["timestamp_accuracy_seconds"] != 0.0:
-            acc_string=" plus/minus "+str(data["events"][image_creation_event_id]["timestamp_accuracy_seconds"])+" seconds"
-        else:
-            acc_string=""
-
-        if data["capture_timestamp"]["capture_duration_seconds"] == False:
-            explanation_var.set("A multi-picture image (focus stack/exposure stack/etc) that started being taken at " + date + acc_string + " and took " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " seconds to capture" )
-        else:
-            explanation_var.set("An image taken at " + date + acc_string + " with a " + str(data["capture_timestamp"]["capture_duration_seconds"]) + " second shutter speed")
-        explanation.config(bg="grey64")
-
-    # explanation text
-    explanation_var = tk.StringVar()
-    explanation = tk.Label(capture_timestamp, textvariable=explanation_var, wraplength=450)
-    explanation.config(width=70)
-
-    # Original capture date
-    cap_start_var = tk.StringVar(value=strftime('%Y-%m-%d %H:%M:%S', time.gmtime(data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]) ))
-    cap_start_label=tk.Label(capture_timestamp, text="Original capture start date:")
-    cap_start = tk.Entry(capture_timestamp,textvariable=cap_start_var,state=tk.DISABLED)
-
-    # Capture date offset
-    cap_offset_var = tk.StringVar(value=data["capture_timestamp"]["capture_start_time_offset_seconds"])
-    cap_offset_var.trace_add("write", update_capture_timestamp_description)
-    cap_offset_label=tk.Label(capture_timestamp, text="Capture start date offset seconds:")
-    cap_offset = tk.Entry(capture_timestamp,textvariable=cap_offset_var)
-
-    # Capture duration
-    cap_duration_var = tk.StringVar(value=str(data["capture_timestamp"]["capture_duration_seconds"]))
-    cap_duration_var.trace_add("write", update_capture_timestamp_description)
-    cap_duration_label=tk.Label(capture_timestamp, text="Capture duration (seconds):")
-    cap_duration = tk.Entry(capture_timestamp,textvariable=cap_duration_var)
-
-    # Capture accuracy
-    cap_accuracy_var = tk.StringVar(value=str(data["events"][0]["timestamp_accuracy_seconds"])) #TODO: don't hardcode this value
-    cap_accuracy_var.trace_add("write", update_capture_timestamp_description)
-    cap_accuracy_label=tk.Label(capture_timestamp, text="Capture start accuracy (±seconds):")
-    cap_accuracy = tk.Entry(capture_timestamp,textvariable=cap_accuracy_var)
-
-    # One shot checkbox
-    one_capture_var = tk.BooleanVar()
-    one_capture_var.trace_add( "write", update_capture_timestamp_description)
-    one_capture = tk.Checkbutton(capture_timestamp, text="Final picture is comprised of one capture",variable=one_capture_var )
-    one_capture.select() #this also calls update_capture_timestamp_description. If removed place a call to it to write the initial value on the text box
-
-
-    cap_start_label.grid     (row=0,column=0,padx=3,pady=3)
-    cap_start.grid           (row=0,column=1,padx=3,pady=3)
-    cap_duration_label.grid  (row=0,column=2,padx=3,pady=3)
-    cap_duration.grid        (row=0,column=3,padx=3,pady=3)
-    cap_offset_label.grid    (row=1,column=0,padx=3,pady=3)
-    cap_offset.grid          (row=1,column=1,padx=3,pady=3)
-    cap_accuracy_label.grid  (row=1,column=2,padx=3,pady=3)
-    cap_accuracy.grid        (row=1,column=3,padx=3,pady=3)
-    one_capture.grid         (row=2,column=3,padx=3,pady=3)
-    explanation.grid         (row=2,column=0,padx=3,pady=3,columnspan=3)
 
     #############
     # Constants #
