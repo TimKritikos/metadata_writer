@@ -513,7 +513,6 @@ def main():
     constants_frame=TitledFrame(left_column,[("Constants", ("TkDefaultFont", 10))])
 
     sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
-    sha512sum=TitledEntry(constants_frame,"Image SHA512",data["constants"]["image_sha512"],input_state=tk.DISABLED)
     filename=TitledEntry(constants_frame,"Image Filename",data["constants"]["image_file_full_path"],input_state=tk.DISABLED)
     program_version=TitledEntry(constants_frame,"Program version",data["program_version"],width=8,input_state=tk.DISABLED)
     data_spec_version=TitledEntry(constants_frame,"Data specification version",data["data_spec_version"],width=8,input_state=tk.DISABLED)
