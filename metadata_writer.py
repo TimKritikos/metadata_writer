@@ -415,10 +415,10 @@ def main():
             data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=float(gnss_device_time_offset.get())
         except ValueError as e:
             data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]=0
-        for file in os.listdir(os.path.dirname(data["constants"]["image_file_full_path"])):
+        gpx_search_dir=os.path.dirname(data["constants"]["image_file_full_path"])
+        for file in os.listdir(gpx_search_dir):
             if file.endswith(".gpx"):
-                #print("Trying "+str(os.path.join("/home/user/gnss_test/", file)))
-                if try_gpx_file(os.path.join("/home/user/gnss_test/", file)) == 0:
+                if try_gpx_file(os.path.join(gpx_search_dir, file)) == 0:
                     break
         if data["geolocation_data"]["source_gnss_track_file"]["have_data"] == True :
             geolocation_gnss_track_file_source.update_latitude( data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"])
