@@ -129,6 +129,7 @@
             height: 300px;
             border-radius: 4px;
             margin-bottom: 15px;
+            cursor: crosshair;
         }
         
         .geo-source {
@@ -516,6 +517,22 @@
                 maxZoom: 19,
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
+            
+            // Add click handler to set manual coordinates
+            map.on('click', function(e) {
+                const lat = e.latlng.lat.toFixed(6);
+                const lon = e.latlng.lng.toFixed(6);
+                
+                // Update manual entry fields
+                document.getElementById('manualLat').value = lat;
+                document.getElementById('manualLon').value = lon;
+                
+                // Switch to manual entry source
+                document.getElementById('geoSource').value = 'source_manual_entry';
+                
+                // Trigger update
+                updateGeolocation();
+            });
         }
         
         // Update map tile layer based on selected server
