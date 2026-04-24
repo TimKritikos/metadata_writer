@@ -77,6 +77,19 @@
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        
+        input.pending,
+        textarea.pending {
+            background-color: #fff3cd;
+            border-color: #ffc107;
+        }
+        
+        input.invalid,
+        textarea.invalid {
+            background-color: #f8d7da;
+            border-color: #dc3545;
         }
         
         textarea {
@@ -326,17 +339,17 @@
                     </div>
                     <div class="form-group">
                         <label>Capture Duration (seconds)</label>
-                        <input type="number" step="any" id="captureDuration" oninput="updateCaptureTimestamp()">
+                        <input type="text" id="captureDuration" oninput="updateCaptureTimestamp()">
                     </div>
                 </div>
                 <div class="inline-group">
                     <div class="form-group">
                         <label>Capture Start Offset (seconds)</label>
-                        <input type="number" step="any" id="captureOffset" oninput="updateCaptureTimestamp()">
+                        <input type="text" id="captureOffset" oninput="updateCaptureTimestamp()">
                     </div>
                     <div class="form-group">
                         <label>Capture Start Accuracy (±seconds)</label>
-                        <input type="number" step="any" id="captureAccuracy" oninput="updateCaptureTimestamp()">
+                        <input type="text" id="captureAccuracy" oninput="updateCaptureTimestamp()">
                     </div>
                 </div>
                 <div class="form-group">
@@ -374,7 +387,7 @@
                     <div class="geo-source-title">GPX File</div>
                     <div class="form-group">
                         <label>GNSS Device Time Offset (seconds)</label>
-                        <input type="number" step="any" id="gnssOffset" oninput="updateGnssOffset()">
+                        <input type="text" id="gnssOffset" oninput="updateGnssOffset()">
                     </div>
                     <div class="inline-group">
                         <div class="form-group">
@@ -407,11 +420,11 @@
                     <div class="inline-group">
                         <div class="form-group">
                             <label>Latitude</label>
-                            <input type="number" step="any" id="manualLat" oninput="updateGeolocation()">
+                            <input type="text" id="manualLat" oninput="updateGeolocation()">
                         </div>
                         <div class="form-group">
                             <label>Longitude</label>
-                            <input type="number" step="any" id="manualLon" oninput="updateGeolocation()">
+                            <input type="text" id="manualLon" oninput="updateGeolocation()">
                         </div>
                     </div>
                     <button class="button button-secondary" onclick="pasteCoordinates()">Paste from Clipboard</button>
@@ -433,6 +446,7 @@
         let isProcessing = false;
         let loadingTimeout = null;
         let debounceTimers = {};
+        let fieldStates = {}; // Track field validation states
         
         // Show/hide loading overlay with delay
         function setProcessing(processing) {
@@ -451,6 +465,35 @@
                     loadingTimeout = null;
                 }
                 overlay.classList.remove('active');
+            }
+        }
+        
+        // Mark field as pending
+        function markFieldPending(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.classList.remove('invalid');
+                field.classList.add('pending');
+                fieldStates[fieldId] = 'pending';
+            }
+        }
+        
+        // Mark field as valid
+        function markFieldValid(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.classList.remove('pending', 'invalid');
+                fieldStates[fieldId] = 'valid';
+            }
+        }
+        
+        // Mark field as invalid
+        function markFieldInvalid(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.classList.remove('pending');
+                field.classList.add('invalid');
+                fieldStates[fieldId] = 'invalid';
             }
         }
         
@@ -602,6 +645,9 @@
         }
         
         async function updateTexts() {
+            markFieldPending('title');
+            markFieldPending('description');
+            
             debounce('texts', async () => {
                 if (isProcessing) return;
                 setProcessing(true);
@@ -616,7 +662,17 @@
                             }
                         })
                     });
-                    metadata = await response.json();
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        metadata = result.data;
+                        markFieldValid('title');
+                        markFieldValid('description');
+                    } else {
+                        // Keep user input, mark as invalid
+                        if (result.errors && result.errors.title) markFieldInvalid('title');
+                        if (result.errors && result.errors.description) markFieldInvalid('description');
+                    }
                 } finally {
                     setProcessing(false);
                 }
@@ -625,6 +681,10 @@
         
         async function updateCaptureTimestamp() {
             updateCaptureExplanation();
+            markFieldPending('captureOffset');
+            markFieldPending('captureDuration');
+            markFieldPending('captureAccuracy');
+            
             debounce('capture', async () => {
                 if (isProcessing) return;
                 setProcessing(true);
@@ -634,17 +694,41 @@
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
                             capture_timestamp: {
-                                capture_start_time_offset_seconds: parseFloat(document.getElementById('captureOffset').value) || 0,
-                                capture_duration_seconds: parseFloat(document.getElementById('captureDuration').value) || 0,
+                                capture_start_time_offset_seconds: document.getElementById('captureOffset').value,
+                                capture_duration_seconds: document.getElementById('captureDuration').value,
                                 single_capture_picture: document.getElementById('singleCapture').checked
                             },
                             events: [{
-                                timestamp_accuracy_seconds: parseFloat(document.getElementById('captureAccuracy').value) || 0
+                                timestamp_accuracy_seconds: document.getElementById('captureAccuracy').value
                             }]
                         })
                     });
-                    metadata = await response.json();
-                    updateUI();
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        metadata = result.data;
+                        markFieldValid('captureOffset');
+                        markFieldValid('captureDuration');
+                        markFieldValid('captureAccuracy');
+                        updateUI();
+                    } else {
+                        // Keep user input, mark invalid fields
+                        if (result.errors && result.errors.capture_start_time_offset_seconds) {
+                            markFieldInvalid('captureOffset');
+                        } else {
+                            markFieldValid('captureOffset');
+                        }
+                        if (result.errors && result.errors.capture_duration_seconds) {
+                            markFieldInvalid('captureDuration');
+                        } else {
+                            markFieldValid('captureDuration');
+                        }
+                        if (result.errors && result.errors.timestamp_accuracy_seconds) {
+                            markFieldInvalid('captureAccuracy');
+                        } else {
+                            markFieldValid('captureAccuracy');
+                        }
+                    }
                 } finally {
                     setProcessing(false);
                 }
@@ -652,6 +736,8 @@
         }
         
         async function updateGnssOffset() {
+            markFieldPending('gnssOffset');
+            
             debounce('gnss', async () => {
                 if (isProcessing) return;
                 setProcessing(true);
@@ -662,13 +748,25 @@
                         body: JSON.stringify({
                             geolocation_data: {
                                 source_gnss_track_file: {
-                                    gnss_device_time_offset_seconds: parseFloat(document.getElementById('gnssOffset').value) || 0
+                                    gnss_device_time_offset_seconds: document.getElementById('gnssOffset').value
                                 }
                             }
                         })
                     });
-                    metadata = await response.json();
-                    updateUI();
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        metadata = result.data;
+                        markFieldValid('gnssOffset');
+                        updateUI();
+                    } else {
+                        // Keep user input, mark as invalid
+                        if (result.errors && result.errors.gnss_device_time_offset_seconds) {
+                            markFieldInvalid('gnssOffset');
+                        } else {
+                            markFieldValid('gnssOffset');
+                        }
+                    }
                 } finally {
                     setProcessing(false);
                 }
@@ -676,13 +774,13 @@
         }
         
         async function updateGeolocation() {
+            markFieldPending('manualLat');
+            markFieldPending('manualLon');
+            
             debounce('geolocation', async () => {
                 if (isProcessing) return;
                 setProcessing(true);
                 try {
-                    const manualLat = parseFloat(document.getElementById('manualLat').value);
-                    const manualLon = parseFloat(document.getElementById('manualLon').value);
-                    
                     const response = await fetch('/api/metadata', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -691,15 +789,32 @@
                                 valid_data_source: document.getElementById('geoSource').value,
                                 display_map_tile_server: document.getElementById('mapTileServer').value,
                                 source_manual_entry: {
-                                    Latitude_decimal: isNaN(manualLat) ? 100000 : manualLat,
-                                    Longitude_decimal: isNaN(manualLon) ? 100000 : manualLon,
-                                    have_data: !isNaN(manualLat) && !isNaN(manualLon)
+                                    Latitude_decimal: document.getElementById('manualLat').value,
+                                    Longitude_decimal: document.getElementById('manualLon').value
                                 }
                             }
                         })
                     });
-                    metadata = await response.json();
-                    updateMap();
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        metadata = result.data;
+                        markFieldValid('manualLat');
+                        markFieldValid('manualLon');
+                        updateMap();
+                    } else {
+                        // Keep user input, mark invalid fields
+                        if (result.errors && result.errors.Latitude_decimal) {
+                            markFieldInvalid('manualLat');
+                        } else {
+                            markFieldValid('manualLat');
+                        }
+                        if (result.errors && result.errors.Longitude_decimal) {
+                            markFieldInvalid('manualLon');
+                        } else {
+                            markFieldValid('manualLon');
+                        }
+                    }
                 } finally {
                     setProcessing(false);
                 }
