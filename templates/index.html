@@ -443,6 +443,7 @@
         let metadata = {};
         let map = null;
         let marker = null;
+        let currentTileLayer = null;
         let isProcessing = false;
         let loadingTimeout = null;
         let debounceTimers = {};
@@ -511,9 +512,42 @@
         // Initialize map
         function initMap() {
             map = L.map('map').setView([0, 0], 2);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            currentTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+        
+        // Update map tile layer based on selected server
+        function updateMapTileLayer(serverName) {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            
+            let tileUrl, attribution, maxZoom;
+            
+            switch(serverName) {
+                case 'Google Maps default online':
+                    tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+                    attribution = '© Google Maps';
+                    maxZoom = 20;
+                    break;
+                case 'Google Maps satellite online':
+                    tileUrl = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+                    attribution = '© Google Maps';
+                    maxZoom = 20;
+                    break;
+                case 'OpenStreetMaps online':
+                default:
+                    tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+                    attribution = '© OpenStreetMap contributors';
+                    maxZoom = 19;
+                    break;
+            }
+            
+            currentTileLayer = L.tileLayer(tileUrl, {
+                maxZoom: maxZoom,
+                attribution: attribution
             }).addTo(map);
         }
         
@@ -550,6 +584,7 @@
             
             // Geolocation
             document.getElementById('mapTileServer').value = metadata.geolocation_data.display_map_tile_server;
+            updateMapTileLayer(metadata.geolocation_data.display_map_tile_server);
             document.getElementById('geoSource').value = metadata.geolocation_data.valid_data_source;
             document.getElementById('gnssOffset').value = metadata.geolocation_data.source_gnss_track_file.gnss_device_time_offset_seconds;
             
@@ -776,6 +811,10 @@
         async function updateGeolocation() {
             markFieldPending('manualLat');
             markFieldPending('manualLon');
+            
+            // Update tile layer immediately when server changes
+            const tileServer = document.getElementById('mapTileServer').value;
+            updateMapTileLayer(tileServer);
             
             debounce('geolocation', async () => {
                 if (isProcessing) return;
