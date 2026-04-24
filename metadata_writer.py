@@ -45,12 +45,14 @@ import gpxpy.gpx
 import time
 import base64
 import io
+import secrets
 
 app = Flask(__name__)
 
 # Global state to hold current image data
 current_data = {}
 current_image_path = None
+session_key = None
 
 def sha512Checksum(filePath):
     with open(filePath, 'rb') as fh:
@@ -231,18 +233,23 @@ def index():
     """Main page"""
     if not current_image_path:
         return "No image loaded. Please start the application with an image path.", 400
-    return render_template('index.html')
+    return render_template('index.html', session_key=session_key)
 
 @app.route('/api/metadata', methods=['GET'])
 def get_metadata():
     """Get current metadata"""
-    return jsonify(current_data)
+    return jsonify({"data": current_data, "session_key": session_key})
 
 @app.route('/api/metadata', methods=['POST'])
 def update_metadata():
     """Update metadata with validation"""
     global current_data
     updates = request.json
+    
+    # Validate session key
+    if 'session_key' not in updates or updates['session_key'] != session_key:
+        return jsonify({"success": False, "error": "invalid_session", "message": "Session expired. Please reload the page."}), 403
+    
     errors = {}
 
     # Update texts (no validation needed for strings)
@@ -358,6 +365,12 @@ def update_metadata():
 @app.route('/api/save', methods=['POST'])
 def save_metadata():
     """Save metadata to JSON file"""
+    updates = request.json
+    
+    # Validate session key
+    if 'session_key' not in updates or updates['session_key'] != session_key:
+        return jsonify({"success": False, "error": "invalid_session", "message": "Session expired. Please reload the page."}), 403
+    
     output_path = Path(current_data["constants"]["image_file_full_path"]).with_suffix(".json")
 
     with open(output_path, "w") as f:
@@ -383,7 +396,7 @@ def get_image():
     return jsonify({"image": f"data:image/jpeg;base64,{img_str}"})
 
 def main():
-    global current_data, current_image_path
+    global current_data, current_image_path, session_key
 
     if len(sys.argv) < 2:
         print("Usage: python web_metadata_writer.py path_to_image")
@@ -394,6 +407,9 @@ def main():
     if not os.path.exists(current_image_path):
         print(f"Error: Image file not found: {current_image_path}")
         sys.exit(1)
+
+    # Generate unique session key for this server instance
+    session_key = secrets.token_hex(16)
 
     print(f"Loading metadata for: {current_image_path}")
     current_data = load_image_metadata(current_image_path)
