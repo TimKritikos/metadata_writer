@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadata Writer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 20px;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .section-number {
+            color: #007bff;
+            margin-right: 5px;
+        }
+        
+        .left-column {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .image-preview {
+            width: 100%;
+            border-radius: 4px;
+            border: 2px solid #ddd;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+        
+        input:disabled {
+            background: #f0f0f0;
+            color: #666;
+        }
+        
+        .inline-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .explanation {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .explanation.valid {
+            background: #d4edda;
+        }
+        
+        .explanation.invalid {
+            background: #f8d7da;
+        }
+        
+        #map {
+            height: 300px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        
+        .geo-source {
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+        
+        .geo-source-title {
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .button-primary {
+            background: #28a745;
+            color: white;
+        }
+        
+        .button-primary:hover {
+            background: #218838;
+        }
+        
+        .button-secondary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .button-secondary:hover {
+            background: #0056b3;
+        }
+        
+        .save-section {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .constant-item {
+            font-size: 12px;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        
+        .constant-label {
+            font-weight: 500;
+            color: #666;
+        }
+        
+        .misspelled {
+            text-decoration: underline;
+            text-decoration-color: red;
+            text-decoration-style: wavy;
+        }
+        
+        .timeline {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .timeline-event {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .timeline-dot {
+            width: 12px;
+            height: 12px;
+            background: #007bff;
+            border-radius: 50%;
+            margin-right: 15px;
+        }
+        
+        .timeline-content {
+            flex: 1;
+        }
+        
+        .timeline-text {
+            font-weight: 500;
+        }
+        
+        .timeline-date {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-column">
+            <div class="section">
+                <div class="section-title">Image</div>
+                <img id="imagePreview" class="image-preview" alt="Image preview">
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Constants</div>
+                <div class="constant-item">
+                    <span class="constant-label">Filename:</span>
+                    <div id="filename"></div>
+                </div>
+                <div class="constant-item">
+                    <span class="constant-label">SHA512:</span>
+                    <div id="sha512"></div>
+                </div>
+                <div class="inline-group">
+                    <div class="constant-item">
+                        <span class="constant-label">Program:</span>
+                        <div id="programVersion"></div>
+                    </div>
+                    <div class="constant-item">
+                        <span class="constant-label">Data Spec:</span>
+                        <div id="dataSpecVersion"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title"><span class="section-number">[4]</span>Save</div>
+                <div class="save-section">
+                    <button class="button button-primary" onclick="saveMetadata()">Write and Exit</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="right-column">
+            <div class="section">
+                <div class="section-title"><span class="section-number">[1]</span>Texts</div>
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="title" oninput="updateTexts()">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="description" oninput="updateTexts()"></textarea>
+                </div>
+                <button class="button button-secondary" onclick="spellCheck()">Spell Check</button>
+            </div>
+            
+            <div class="section">
+                <div class="section-title"><span class="section-number">[2]</span>Capture Timestamp</div>
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label>Original Capture Start Date</label>
+                        <input type="text" id="captureStart" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>Capture Duration (seconds)</label>
+                        <input type="number" step="any" id="captureDuration" oninput="updateCaptureTimestamp()">
+                    </div>
+                </div>
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label>Capture Start Offset (seconds)</label>
+                        <input type="number" step="any" id="captureOffset" oninput="updateCaptureTimestamp()">
+                    </div>
+                    <div class="form-group">
+                        <label>Capture Start Accuracy (±seconds)</label>
+                        <input type="number" step="any" id="captureAccuracy" oninput="updateCaptureTimestamp()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="singleCapture" onchange="updateCaptureTimestamp()">
+                        Final picture is comprised of one capture
+                    </label>
+                </div>
+                <div id="captureExplanation" class="explanation"></div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title"><span class="section-number">[3]</span>Geolocation Data</div>
+                <div id="map"></div>
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label>Map Tile Server</label>
+                        <select id="mapTileServer" onchange="updateGeolocation()">
+                            <option>OpenStreetMaps online</option>
+                            <option>Google Maps default online</option>
+                            <option>Google Maps satellite online</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Geolocation Source</label>
+                        <select id="geoSource" onchange="updateGeolocation()">
+                            <option value="source_original_media_file">Original media file</option>
+                            <option value="source_gnss_track_file">GPX file</option>
+                            <option value="source_manual_entry">Manual entry</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="geo-source">
+                    <div class="geo-source-title">GPX File</div>
+                    <div class="form-group">
+                        <label>GNSS Device Time Offset (seconds)</label>
+                        <input type="number" step="any" id="gnssOffset" oninput="updateGnssOffset()">
+                    </div>
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input type="text" id="gpxLat" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input type="text" id="gpxLon" disabled>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="geo-source">
+                    <div class="geo-source-title">Original Media File</div>
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input type="text" id="exifLat" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input type="text" id="exifLon" disabled>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="geo-source">
+                    <div class="geo-source-title">Manual Entry</div>
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input type="number" step="any" id="manualLat" oninput="updateGeolocation()">
+                        </div>
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input type="number" step="any" id="manualLon" oninput="updateGeolocation()">
+                        </div>
+                    </div>
+                    <button class="button button-secondary" onclick="pasteCoordinates()">Paste from Clipboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="timeline">
+        <div class="section-title">Timeline</div>
+        <div id="timelineEvents"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let metadata = {};
+        let map = null;
+        let marker = null;
+        
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+        
+        // Load initial data
+        async function loadData() {
+            const response = await fetch('/api/metadata');
+            metadata = await response.json();
+            updateUI();
+            
+            // Load image
+            const imgResponse = await fetch('/api/image');
+            const imgData = await imgResponse.json();
+            document.getElementById('imagePreview').src = imgData.image;
+        }
+        
+        function updateUI() {
+            // Texts
+            document.getElementById('title').value = metadata.texts.title;
+            document.getElementById('description').value = metadata.texts.description;
+            
+            // Capture timestamp
+            const captureDate = new Date(metadata.capture_timestamp.capture_start_on_original_metadata_timestamp * 1000);
+            document.getElementById('captureStart').value = captureDate.toISOString().slice(0, 19).replace('T', ' ');
+            document.getElementById('captureDuration').value = metadata.capture_timestamp.capture_duration_seconds;
+            document.getElementById('captureOffset').value = metadata.capture_timestamp.capture_start_time_offset_seconds;
+            document.getElementById('captureAccuracy').value = metadata.events[0].timestamp_accuracy_seconds;
+            document.getElementById('singleCapture').checked = metadata.capture_timestamp.single_capture_picture;
+            updateCaptureExplanation();
+            
+            // Geolocation
+            document.getElementById('mapTileServer').value = metadata.geolocation_data.display_map_tile_server;
+            document.getElementById('geoSource').value = metadata.geolocation_data.valid_data_source;
+            document.getElementById('gnssOffset').value = metadata.geolocation_data.source_gnss_track_file.gnss_device_time_offset_seconds;
+            
+            const gpxData = metadata.geolocation_data.source_gnss_track_file;
+            document.getElementById('gpxLat').value = gpxData.have_data ? gpxData.Latitude_decimal : '';
+            document.getElementById('gpxLon').value = gpxData.have_data ? gpxData.Longitude_decimal : '';
+            
+            const exifData = metadata.geolocation_data.source_original_media_file;
+            document.getElementById('exifLat').value = exifData.have_data ? exifData.Latitude_decimal : '';
+            document.getElementById('exifLon').value = exifData.have_data ? exifData.Longitude_decimal : '';
+            
+            const manualData = metadata.geolocation_data.source_manual_entry;
+            document.getElementById('manualLat').value = manualData.have_data ? manualData.Latitude_decimal : '';
+            document.getElementById('manualLon').value = manualData.have_data ? manualData.Longitude_decimal : '';
+            
+            updateMap();
+            
+            // Constants
+            document.getElementById('filename').textContent = metadata.constants.image_file_full_path;
+            document.getElementById('sha512').textContent = metadata.constants.image_sha512;
+            document.getElementById('programVersion').textContent = metadata.program_version;
+            document.getElementById('dataSpecVersion').textContent = metadata.data_spec_version;
+            
+            // Timeline
+            updateTimeline();
+        }
+        
+        function updateCaptureExplanation() {
+            const offset = parseFloat(document.getElementById('captureOffset').value) || 0;
+            const duration = parseFloat(document.getElementById('captureDuration').value) || 0;
+            const accuracy = parseFloat(document.getElementById('captureAccuracy').value) || 0;
+            const single = document.getElementById('singleCapture').checked;
+            
+            const timestamp = metadata.capture_timestamp.capture_start_on_original_metadata_timestamp + offset;
+            const date = new Date(timestamp * 1000);
+            const dateStr = date.toUTCString();
+            
+            const accStr = accuracy !== 0 ? ` plus/minus ${accuracy} seconds` : '';
+            
+            let explanation;
+            if (single) {
+                explanation = `An image taken at ${dateStr}${accStr} with a ${duration} second shutter speed`;
+            } else {
+                explanation = `A multi-picture image (focus stack/exposure stack/etc) that started being taken at ${dateStr}${accStr} and took ${duration} seconds to capture`;
+            }
+            
+            const el = document.getElementById('captureExplanation');
+            el.textContent = explanation;
+            el.className = 'explanation valid';
+        }
+        
+        function updateMap() {
+            const source = metadata.geolocation_data.valid_data_source;
+            const sourceData = metadata.geolocation_data[source];
+            
+            if (sourceData.have_data) {
+                const lat = sourceData.Latitude_decimal;
+                const lon = sourceData.Longitude_decimal;
+                
+                if (marker) {
+                    marker.setLatLng([lat, lon]);
+                } else {
+                    marker = L.marker([lat, lon]).addTo(map);
+                }
+                
+                map.setView([lat, lon], 15);
+            } else if (marker) {
+                map.removeLayer(marker);
+                marker = null;
+            }
+        }
+        
+        function updateTimeline() {
+            const container = document.getElementById('timelineEvents');
+            container.innerHTML = '';
+            
+            metadata.events.forEach(event => {
+                const div = document.createElement('div');
+                div.className = 'timeline-event';
+                
+                const date = new Date(event.timestamp * 1000);
+                
+                div.innerHTML = `
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-text">${event.text || event.event_type}</div>
+                        <div class="timeline-date">${date.toLocaleString()}</div>
+                    </div>
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+        
+        async function updateTexts() {
+            const response = await fetch('/api/metadata', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    texts: {
+                        title: document.getElementById('title').value,
+                        description: document.getElementById('description').value
+                    }
+                })
+            });
+            metadata = await response.json();
+        }
+        
+        async function updateCaptureTimestamp() {
+            updateCaptureExplanation();
+            
+            const response = await fetch('/api/metadata', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    capture_timestamp: {
+                        capture_start_time_offset_seconds: parseFloat(document.getElementById('captureOffset').value) || 0,
+                        capture_duration_seconds: parseFloat(document.getElementById('captureDuration').value) || 0,
+                        single_capture_picture: document.getElementById('singleCapture').checked
+                    },
+                    events: [{
+                        timestamp_accuracy_seconds: parseFloat(document.getElementById('captureAccuracy').value) || 0
+                    }]
+                })
+            });
+            metadata = await response.json();
+            updateUI();
+        }
+        
+        async function updateGnssOffset() {
+            const response = await fetch('/api/metadata', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    geolocation_data: {
+                        source_gnss_track_file: {
+                            gnss_device_time_offset_seconds: parseFloat(document.getElementById('gnssOffset').value) || 0
+                        }
+                    }
+                })
+            });
+            metadata = await response.json();
+            updateUI();
+        }
+        
+        async function updateGeolocation() {
+            const manualLat = parseFloat(document.getElementById('manualLat').value);
+            const manualLon = parseFloat(document.getElementById('manualLon').value);
+            
+            const response = await fetch('/api/metadata', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    geolocation_data: {
+                        valid_data_source: document.getElementById('geoSource').value,
+                        display_map_tile_server: document.getElementById('mapTileServer').value,
+                        source_manual_entry: {
+                            Latitude_decimal: isNaN(manualLat) ? 100000 : manualLat,
+                            Longitude_decimal: isNaN(manualLon) ? 100000 : manualLon,
+                            have_data: !isNaN(manualLat) && !isNaN(manualLon)
+                        }
+                    }
+                })
+            });
+            metadata = await response.json();
+            updateMap();
+        }
+        
+        async function pasteCoordinates() {
+            try {
+                const text = await navigator.clipboard.readText();
+                const parts = text.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    document.getElementById('manualLat').value = parts[0];
+                    document.getElementById('manualLon').value = parts[1];
+                    updateGeolocation();
+                }
+            } catch (err) {
+                alert('Failed to read clipboard');
+            }
+        }
+        
+        async function spellCheck() {
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            
+            // Simple client-side spell check indication
+            alert('Spell check feature requires NLTK. Check console for details.');
+        }
+        
+        async function saveMetadata() {
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(`Metadata saved to: ${result.path}`);
+                window.close();
+            } else {
+                alert('Failed to save metadata');
+            }
+        }
+        
+        // Initialize
+        initMap();
+        loadData();
+    </script>
+</body>
+</html>
