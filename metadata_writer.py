@@ -36,7 +36,7 @@ import os
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from fractions import Fraction
@@ -380,7 +380,7 @@ def save_metadata():
 
 @app.route('/api/image')
 def get_image():
-    """Serve the current image"""
+    """Serve a thumbnail of the current image"""
     if not current_image_path:
         return "No image loaded", 404
 
@@ -394,6 +394,13 @@ def get_image():
     img_str = base64.b64encode(buffer.getvalue()).decode()
 
     return jsonify({"image": f"data:image/jpeg;base64,{img_str}"})
+
+@app.route('/api/image/full')
+def get_image_full():
+    """Serve the full resolution image file"""
+    if not current_image_path:
+        return "No image loaded", 404
+    return send_file(current_image_path)
 
 def main():
     global current_data, current_image_path, session_key

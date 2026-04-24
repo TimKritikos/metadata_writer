@@ -55,6 +55,100 @@
             width: 100%;
             border-radius: 4px;
             border: 2px solid #ddd;
+            cursor: zoom-in;
+        }
+
+        .lightbox-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.92);
+            z-index: 10000;
+            display: none;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        .lightbox-overlay.active {
+            display: block;
+        }
+
+        .lightbox-overlay.grabbing {
+            cursor: grabbing;
+        }
+
+        .lightbox-img {
+            position: absolute;
+            top: 0; left: 0;
+            transform-origin: 0 0;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .lightbox-close-btn {
+            position: fixed;
+            top: 12px; right: 16px;
+            width: 38px; height: 38px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 22px;
+            cursor: pointer;
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .lightbox-close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .lightbox-controls {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 7px 14px;
+            border-radius: 24px;
+            z-index: 10001;
+        }
+
+        .lightbox-btn {
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 13px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .lightbox-btn:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+
+        .lightbox-zoom-label {
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 13px;
+            min-width: 48px;
+            text-align: center;
+        }
+
+        .lightbox-hint {
+            position: fixed;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10001;
         }
         
         .form-group {
@@ -248,6 +342,19 @@
     </style>
 </head>
 <body>
+    <div class="lightbox-overlay" id="lightboxOverlay">
+        <button class="lightbox-close-btn" onclick="closeLightbox()">&times;</button>
+        <span class="lightbox-hint">Scroll to zoom &nbsp;&middot;&nbsp; Drag to pan &nbsp;&middot;&nbsp; Esc to close</span>
+        <img id="lightboxImg" class="lightbox-img" alt="Full size preview" draggable="false">
+        <div class="lightbox-controls">
+            <button class="lightbox-btn" onclick="lbZoomBtn(-1)">&#8722;</button>
+            <span class="lightbox-zoom-label" id="lightboxZoomLabel">100%</span>
+            <button class="lightbox-btn" onclick="lbZoomBtn(1)">+</button>
+            <button class="lightbox-btn" onclick="lbFit()">Fit</button>
+            <button class="lightbox-btn" onclick="lbActualSize()">1:1</button>
+        </div>
+    </div>
+
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">
             <div class="loading-spinner"></div>
@@ -259,7 +366,7 @@
         <div class="left-column">
             <div class="section">
                 <div class="section-title">Image</div>
-                <img id="imagePreview" class="image-preview" alt="Image preview">
+                <img id="imagePreview" class="image-preview" alt="Image preview" onclick="openLightbox()">
             </div>
             
             <div class="section">
@@ -1190,6 +1297,112 @@
             }
         }
         
+        // ── Lightbox ──────────────────────────────────────────────────────────
+        let lbScale = 1, lbX = 0, lbY = 0;
+        let lbDragging = false, lbMoved = false;
+        let lbDragX = 0, lbDragY = 0, lbDragTX = 0, lbDragTY = 0;
+        const LB_MIN = 0.02, LB_MAX = 20;
+
+        function openLightbox() {
+            const overlay = document.getElementById('lightboxOverlay');
+            const img = document.getElementById('lightboxImg');
+            overlay.classList.add('active');
+            if (img.src.endsWith('/api/image/full') && img.complete && img.naturalWidth) {
+                lbFit();
+            } else {
+                img.onload = lbFit;
+                img.src = '/api/image/full';
+            }
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightboxOverlay').classList.remove('active');
+        }
+
+        function lbApply() {
+            document.getElementById('lightboxImg').style.transform =
+                `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
+            document.getElementById('lightboxZoomLabel').textContent =
+                Math.round(lbScale * 100) + '%';
+        }
+
+        function lbFit() {
+            const img = document.getElementById('lightboxImg');
+            const vw = window.innerWidth, vh = window.innerHeight;
+            lbScale = Math.min((vw - 80) / img.naturalWidth, (vh - 80) / img.naturalHeight);
+            lbX = (vw - img.naturalWidth * lbScale) / 2;
+            lbY = (vh - img.naturalHeight * lbScale) / 2;
+            lbApply();
+        }
+
+        function lbActualSize() {
+            const img = document.getElementById('lightboxImg');
+            lbScale = 1;
+            lbX = (window.innerWidth - img.naturalWidth) / 2;
+            lbY = (window.innerHeight - img.naturalHeight) / 2;
+            lbApply();
+        }
+
+        function lbZoomAt(factor, cx, cy) {
+            const next = Math.min(LB_MAX, Math.max(LB_MIN, lbScale * factor));
+            const r = next / lbScale;
+            lbX = cx - (cx - lbX) * r;
+            lbY = cy - (cy - lbY) * r;
+            lbScale = next;
+            lbApply();
+        }
+
+        function lbZoomBtn(dir) {
+            lbZoomAt(dir > 0 ? 1.3 : 1 / 1.3, window.innerWidth / 2, window.innerHeight / 2);
+        }
+
+        (function () {
+            const overlay = document.getElementById('lightboxOverlay');
+
+            overlay.addEventListener('wheel', e => {
+                e.preventDefault();
+                lbZoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+            }, { passive: false });
+
+            overlay.addEventListener('mousedown', e => {
+                if (e.button !== 0 || e.target !== overlay) return;
+                lbDragging = true;
+                lbMoved = false;
+                lbDragX = e.clientX;
+                lbDragY = e.clientY;
+                lbDragTX = lbX;
+                lbDragTY = lbY;
+                overlay.classList.add('grabbing');
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', e => {
+                if (!lbDragging) return;
+                const dx = e.clientX - lbDragX, dy = e.clientY - lbDragY;
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) lbMoved = true;
+                lbX = lbDragTX + dx;
+                lbY = lbDragTY + dy;
+                lbApply();
+            });
+
+            document.addEventListener('mouseup', e => {
+                if (!lbDragging) return;
+                lbDragging = false;
+                overlay.classList.remove('grabbing');
+                // Treat unmoved click on the backdrop as close
+                if (!lbMoved && e.target === overlay) closeLightbox();
+            });
+
+            document.addEventListener('keydown', e => {
+                if (!overlay.classList.contains('active')) return;
+                if (e.key === 'Escape') closeLightbox();
+                else if (e.key === '+' || e.key === '=') lbZoomBtn(1);
+                else if (e.key === '-') lbZoomBtn(-1);
+                else if (e.key === '0') lbFit();
+                else if (e.key === '1') lbActualSize();
+            });
+        })();
+
         // Initialize
         initMap();
         loadData();
