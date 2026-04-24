@@ -24,6 +24,10 @@
 #Change the background of TitledFrames from the window background
 #Make computationally heavy processes like searching for a point in gpx file in a separate thread asynchronously
 #Do doable TODOs
+#Maybe add these colors to widgets:
+#   RED: assumed need to check
+#   GREEN: previously written
+#   GREY: recorded as not recorded
 
 #import stuff that's needed for both GUI and check mode plus tkinter to make inheritance easier (for now)
 import sys
@@ -166,11 +170,6 @@ def main():
             "image_sha512": sha512Checksum(image_path),
             "image_file_full_path": os.path.realpath(sys.argv[1])
         }
-        #"lights": [{ "source":2, "type":"Flash",      "Usage":"pointing to his face" },
-        #           { "source":3, "type":"continuous", "Usage":"hair light" },
-        #           { "source":1, "type":"continuous", "Usage":"doing its thing" },
-        #           { "source":0, "type":"continuous", "Usage":"street light" }
-        #           ]
     }
 
     #Get exif from image file
@@ -566,20 +565,6 @@ def main():
     #####################
     #media_acquisition=TitledDropdown(root,"Media Acquisition",["unknown","Direct digital off of taking device","Received digital unmodified from taking device","Received digital re-encoded and or metadata stripped","Received digital edited"],0)
 
-    ##########
-    # Lights #
-    ##########
-
-    # #light table
-    # table=[]
-    # for item in data["lights"]:
-    #     for device in device_data["lights"]:
-    #         if device["id"] == item["source"]:
-    #             table.append([device["brand"]+device["name"],item["type"],item["Usage"]])
-
-    # light_table=TitledTable(center_column,"List of lights / flashes used:",table,["Device","Type","Usage"],[140,100,450],['w','w','w'])
-
-
     #Root frame layout
     left_column    .grid(row=0,column=0,sticky='ns',padx=(10,0))
     center_column  .grid(row=0,column=1,sticky='ns',padx=(10,10))
@@ -594,7 +579,6 @@ def main():
     texts_frame            .grid(row=0,column=0,sticky="we",pady=5)
     capture_timestamp      .grid(row=1,column=0,sticky="we",pady=5)
     geolocation_data_frame .grid(row=2,column=0,sticky="we",pady=5)
-    # light_table       .grid(row=6,column=0,sticky="we",pady=5)
 
     #This updates the default geolocation source after the timestamp callback calls the geolocation callback that looks through all the files
     if data["geolocation_data"]["source_original_media_file"]["have_data"] == True :
