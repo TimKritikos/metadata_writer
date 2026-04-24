@@ -955,14 +955,40 @@
         async function pasteCoordinates() {
             try {
                 const text = await navigator.clipboard.readText();
-                const parts = text.trim().split(/\s+/);
+                
+                // Try to parse various coordinate formats:
+                // "lat, long" or "lat,long" or "lat long"
+                // Remove extra whitespace and split by comma or space
+                const cleaned = text.trim().replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+                let parts;
+                
+                if (cleaned.includes(',')) {
+                    parts = cleaned.split(',');
+                } else {
+                    parts = cleaned.split(' ');
+                }
+                
                 if (parts.length >= 2) {
-                    document.getElementById('manualLat').value = parts[0];
-                    document.getElementById('manualLon').value = parts[1];
-                    updateGeolocation();
+                    const lat = parts[0].trim();
+                    const lon = parts[1].trim();
+                    
+                    // Validate that they look like numbers
+                    if (!isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon))) {
+                        document.getElementById('manualLat').value = lat;
+                        document.getElementById('manualLon').value = lon;
+                        
+                        // Switch to manual entry source
+                        document.getElementById('geoSource').value = 'source_manual_entry';
+                        
+                        updateGeolocation();
+                    } else {
+                        alert('Clipboard does not contain valid coordinates.\nExpected format: "latitude, longitude" or "latitude longitude"');
+                    }
+                } else {
+                    alert('Clipboard does not contain valid coordinates.\nExpected format: "latitude, longitude" or "latitude longitude"');
                 }
             } catch (err) {
-                alert('Failed to read clipboard');
+                alert('Failed to read clipboard. Make sure you have granted clipboard permissions.');
             }
         }
         
