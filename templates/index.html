@@ -432,6 +432,7 @@
         let marker = null;
         let isProcessing = false;
         let loadingTimeout = null;
+        let debounceTimers = {};
         
         // Show/hide loading overlay with delay
         function setProcessing(processing) {
@@ -451,6 +452,17 @@
                 }
                 overlay.classList.remove('active');
             }
+        }
+        
+        // Debounce function to delay API calls
+        function debounce(key, func, delay = 500) {
+            if (debounceTimers[key]) {
+                clearTimeout(debounceTimers[key]);
+            }
+            debounceTimers[key] = setTimeout(() => {
+                func();
+                delete debounceTimers[key];
+            }, delay);
         }
         
         // Initialize map
@@ -590,100 +602,108 @@
         }
         
         async function updateTexts() {
-            if (isProcessing) return;
-            setProcessing(true);
-            try {
-                const response = await fetch('/api/metadata', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        texts: {
-                            title: document.getElementById('title').value,
-                            description: document.getElementById('description').value
-                        }
-                    })
-                });
-                metadata = await response.json();
-            } finally {
-                setProcessing(false);
-            }
+            debounce('texts', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            texts: {
+                                title: document.getElementById('title').value,
+                                description: document.getElementById('description').value
+                            }
+                        })
+                    });
+                    metadata = await response.json();
+                } finally {
+                    setProcessing(false);
+                }
+            });
         }
         
         async function updateCaptureTimestamp() {
-            if (isProcessing) return;
             updateCaptureExplanation();
-            setProcessing(true);
-            try {
-                const response = await fetch('/api/metadata', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        capture_timestamp: {
-                            capture_start_time_offset_seconds: parseFloat(document.getElementById('captureOffset').value) || 0,
-                            capture_duration_seconds: parseFloat(document.getElementById('captureDuration').value) || 0,
-                            single_capture_picture: document.getElementById('singleCapture').checked
-                        },
-                        events: [{
-                            timestamp_accuracy_seconds: parseFloat(document.getElementById('captureAccuracy').value) || 0
-                        }]
-                    })
-                });
-                metadata = await response.json();
-                updateUI();
-            } finally {
-                setProcessing(false);
-            }
+            debounce('capture', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            capture_timestamp: {
+                                capture_start_time_offset_seconds: parseFloat(document.getElementById('captureOffset').value) || 0,
+                                capture_duration_seconds: parseFloat(document.getElementById('captureDuration').value) || 0,
+                                single_capture_picture: document.getElementById('singleCapture').checked
+                            },
+                            events: [{
+                                timestamp_accuracy_seconds: parseFloat(document.getElementById('captureAccuracy').value) || 0
+                            }]
+                        })
+                    });
+                    metadata = await response.json();
+                    updateUI();
+                } finally {
+                    setProcessing(false);
+                }
+            });
         }
         
         async function updateGnssOffset() {
-            if (isProcessing) return;
-            setProcessing(true);
-            try {
-                const response = await fetch('/api/metadata', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        geolocation_data: {
-                            source_gnss_track_file: {
-                                gnss_device_time_offset_seconds: parseFloat(document.getElementById('gnssOffset').value) || 0
+            debounce('gnss', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            geolocation_data: {
+                                source_gnss_track_file: {
+                                    gnss_device_time_offset_seconds: parseFloat(document.getElementById('gnssOffset').value) || 0
+                                }
                             }
-                        }
-                    })
-                });
-                metadata = await response.json();
-                updateUI();
-            } finally {
-                setProcessing(false);
-            }
+                        })
+                    });
+                    metadata = await response.json();
+                    updateUI();
+                } finally {
+                    setProcessing(false);
+                }
+            });
         }
         
         async function updateGeolocation() {
-            if (isProcessing) return;
-            setProcessing(true);
-            try {
-                const manualLat = parseFloat(document.getElementById('manualLat').value);
-                const manualLon = parseFloat(document.getElementById('manualLon').value);
-                
-                const response = await fetch('/api/metadata', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        geolocation_data: {
-                            valid_data_source: document.getElementById('geoSource').value,
-                            display_map_tile_server: document.getElementById('mapTileServer').value,
-                            source_manual_entry: {
-                                Latitude_decimal: isNaN(manualLat) ? 100000 : manualLat,
-                                Longitude_decimal: isNaN(manualLon) ? 100000 : manualLon,
-                                have_data: !isNaN(manualLat) && !isNaN(manualLon)
+            debounce('geolocation', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const manualLat = parseFloat(document.getElementById('manualLat').value);
+                    const manualLon = parseFloat(document.getElementById('manualLon').value);
+                    
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            geolocation_data: {
+                                valid_data_source: document.getElementById('geoSource').value,
+                                display_map_tile_server: document.getElementById('mapTileServer').value,
+                                source_manual_entry: {
+                                    Latitude_decimal: isNaN(manualLat) ? 100000 : manualLat,
+                                    Longitude_decimal: isNaN(manualLon) ? 100000 : manualLon,
+                                    have_data: !isNaN(manualLat) && !isNaN(manualLon)
+                                }
                             }
-                        }
-                    })
-                });
-                metadata = await response.json();
-                updateMap();
-            } finally {
-                setProcessing(false);
-            }
+                        })
+                    });
+                    metadata = await response.json();
+                    updateMap();
+                } finally {
+                    setProcessing(false);
+                }
+            });
         }
         
         async function pasteCoordinates() {
