@@ -306,34 +306,6 @@ def get_image():
 
     return jsonify({"image": f"data:image/jpeg;base64,{img_str}"})
 
-@app.route('/api/spellcheck', methods=['POST'])
-def spellcheck():
-    """Spell check text"""
-    text = request.json.get('text', '')
-
-    try:
-        import nltk
-        from nltk.corpus import wordnet
-
-        # Download if needed
-        try:
-            wordnet.ensure_loaded()
-        except:
-            nltk.download('wordnet', quiet=True)
-
-        words_to_check = text.split()
-        misspelled = []
-
-        for i, word in enumerate(words_to_check):
-            import re
-            clean_word = re.sub(r'[^\w]', '', word.lower())
-            if clean_word and not wordnet.synsets(clean_word):
-                misspelled.append({"word": word, "index": i})
-
-        return jsonify({"misspelled": misspelled})
-    except:
-        return jsonify({"misspelled": [], "error": "Spell check unavailable"})
-
 def main():
     global current_data, current_image_path
 

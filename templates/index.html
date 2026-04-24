@@ -173,12 +173,6 @@
             color: #666;
         }
         
-        .misspelled {
-            text-decoration: underline;
-            text-decoration-color: red;
-            text-decoration-style: wavy;
-        }
-        
         .timeline {
             background: white;
             border-radius: 8px;
@@ -268,7 +262,6 @@
                     <label>Description</label>
                     <textarea id="description" oninput="updateTexts()"></textarea>
                 </div>
-                <button class="button button-secondary" onclick="spellCheck()">Spell Check</button>
             </div>
             
             <div class="section">
@@ -602,14 +595,6 @@
             } catch (err) {
                 alert('Failed to read clipboard');
             }
-        }
-        
-        async function spellCheck() {
-            const title = document.getElementById('title').value;
-            const description = document.getElementById('description').value;
-            
-            // Simple client-side spell check indication
-            alert('Spell check feature requires NLTK. Check console for details.');
         }
         
         async function saveMetadata() {
