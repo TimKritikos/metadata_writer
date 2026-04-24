@@ -42,8 +42,19 @@
         }
         
         .section-number {
-            color: #007bff;
-            margin-right: 5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 25px;
+            height: 25px;
+            background: #007bff;
+            color: white;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 700;
+            margin-right: 8px;
+            vertical-align: middle;
+            flex-shrink: 0;
         }
         
         .left-column {
@@ -227,14 +238,33 @@
         }
         
         .geo-source {
-            border-top: 1px solid #ddd;
-            padding-top: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
             margin-top: 10px;
+            transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
         }
-        
+
+        .geo-source.active {
+            border-color: #007bff;
+            background-color: #f0f7ff;
+        }
+
+        .geo-source.inactive {
+            opacity: 0.8;
+        }
+
         .geo-source-title {
             font-weight: 500;
             margin-bottom: 8px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #888;
+        }
+
+        .geo-source.active .geo-source-title {
+            color: #0062cc;
         }
         
         .button {
@@ -285,7 +315,8 @@
             background: white;
             border-radius: 8px;
             padding: 20px;
-            margin-top: 20px;
+            margin: 20px auto 0;
+            max-width: 1400px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
@@ -339,6 +370,7 @@
             color: #333;
             font-weight: 500;
         }
+
     </style>
 </head>
 <body>
@@ -392,16 +424,17 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">[4]</span>Save</div>
+                <div class="section-title"><span class="section-number">4</span>Save</div>
                 <div class="save-section">
                     <button class="button button-primary" onclick="saveMetadata()">Write and Exit</button>
                 </div>
             </div>
+
         </div>
         
         <div class="right-column">
             <div class="section">
-                <div class="section-title"><span class="section-number">[1]</span>Texts</div>
+                <div class="section-title"><span class="section-number">1</span>Texts</div>
                 <div class="form-group">
                     <label>Title</label>
                     <input type="text" id="title" oninput="updateTexts()">
@@ -413,7 +446,7 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">[2]</span>Capture Timestamp</div>
+                <div class="section-title"><span class="section-number">2</span>Capture Timestamp</div>
                 <div class="inline-group">
                     <div class="form-group">
                         <label>Original Capture Start Date</label>
@@ -444,7 +477,7 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">[3]</span>Geolocation Data</div>
+                <div class="section-title"><span class="section-number">3</span>Geolocation Data</div>
                 <div id="map"></div>
                 <div class="inline-group">
                     <div class="form-group">
@@ -465,7 +498,7 @@
                     </div>
                 </div>
                 
-                <div class="geo-source">
+                <div class="geo-source" id="geoSourceGPX">
                     <div class="geo-source-title">GPX File</div>
                     <div class="form-group">
                         <label>GNSS Device Time Offset (seconds)</label>
@@ -483,7 +516,7 @@
                     </div>
                 </div>
                 
-                <div class="geo-source">
+                <div class="geo-source" id="geoSourceExif">
                     <div class="geo-source-title">Original Media File</div>
                     <div class="inline-group">
                         <div class="form-group">
@@ -497,7 +530,7 @@
                     </div>
                 </div>
                 
-                <div class="geo-source">
+                <div class="geo-source" id="geoSourceManual">
                     <div class="geo-source-title">Manual Entry</div>
                     <div class="inline-group">
                         <div class="form-group">
@@ -731,6 +764,9 @@
             document.getElementById('programVersion').textContent = metadata.program_version;
             document.getElementById('dataSpecVersion').textContent = metadata.data_spec_version;
             
+            // Geo-source highlight
+            updateGeoSourceHighlight();
+
             // Timeline
             updateTimeline();
         }
@@ -1161,8 +1197,9 @@
         async function updateGeolocation() {
             markFieldPending('manualLat');
             markFieldPending('manualLon');
-            
-            // Update tile layer immediately when server changes
+
+            // Immediate visual updates before debounce
+            updateGeoSourceHighlight();
             const tileServer = document.getElementById('mapTileServer').value;
             updateMapTileLayer(tileServer);
             
@@ -1241,7 +1278,7 @@
                 
                 if (parts.length >= 2) {
                     const lat = parts[0].trim();
-                    const lon = parts[1].trim();
+                    const lon = parts1.trim();
                     
                     // Validate that they look like numbers
                     if (!isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon))) {
@@ -1297,6 +1334,22 @@
             }
         }
         
+        function updateGeoSourceHighlight() {
+            const source = document.getElementById('geoSource').value;
+            const map = {
+                'source_gnss_track_file': 'geoSourceGPX',
+                'source_original_media_file': 'geoSourceExif',
+                'source_manual_entry': 'geoSourceManual'
+            };
+            const activeId = map[source];
+            Object.values(map).forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.toggle('active', id === activeId);
+                el.classList.toggle('inactive', id !== activeId);
+            });
+        }
+
         // ── Lightbox ──────────────────────────────────────────────────────────
         let lbScale = 1, lbX = 0, lbY = 0;
         let lbDragging = false, lbMoved = false;
