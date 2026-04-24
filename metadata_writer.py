@@ -116,7 +116,7 @@ def load_image_metadata(image_path):
         "geolocation_data" : {
             "have_data": False,
             "valid_data_source": "uninitialised",
-            "display_map_tile_server" : "",
+            "display_map_tile_server" : "Google Maps satellite online",
             "source_gnss_track_file":{
                 "have_data": False,
                 "Latitude_decimal": 100000,
