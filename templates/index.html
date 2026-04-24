@@ -431,14 +431,24 @@
         let map = null;
         let marker = null;
         let isProcessing = false;
+        let loadingTimeout = null;
         
-        // Show/hide loading overlay
+        // Show/hide loading overlay with delay
         function setProcessing(processing) {
             isProcessing = processing;
             const overlay = document.getElementById('loadingOverlay');
+            
             if (processing) {
-                overlay.classList.add('active');
+                // Only show overlay if request takes longer than 1 second
+                loadingTimeout = setTimeout(() => {
+                    overlay.classList.add('active');
+                }, 1000);
             } else {
+                // Clear timeout and hide overlay immediately
+                if (loadingTimeout) {
+                    clearTimeout(loadingTimeout);
+                    loadingTimeout = null;
+                }
                 overlay.classList.remove('active');
             }
         }
