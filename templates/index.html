@@ -521,15 +521,17 @@
             
             // Add click handler to set manual coordinates
             map.on('click', function(e) {
+                // Only allow clicking to set coordinates if manual entry is selected
+                if (document.getElementById('geoSource').value !== 'source_manual_entry') {
+                    return;
+                }
+                
                 const lat = e.latlng.lat.toFixed(6);
                 const lon = e.latlng.lng.toFixed(6);
                 
                 // Update manual entry fields
                 document.getElementById('manualLat').value = lat;
                 document.getElementById('manualLon').value = lon;
-                
-                // Switch to manual entry source
-                document.getElementById('geoSource').value = 'source_manual_entry';
                 
                 // Trigger update
                 updateGeolocation();
