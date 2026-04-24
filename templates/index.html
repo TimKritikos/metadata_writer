@@ -442,7 +442,7 @@
                 // Only show overlay if request takes longer than 1 second
                 loadingTimeout = setTimeout(() => {
                     overlay.classList.add('active');
-                }, 1000);
+                }, 100);
             } else {
                 // Clear timeout and hide overlay immediately
                 if (loadingTimeout) {
