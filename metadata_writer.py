@@ -240,44 +240,107 @@ def get_metadata():
 
 @app.route('/api/metadata', methods=['POST'])
 def update_metadata():
-    """Update metadata"""
+    """Update metadata with validation"""
     global current_data
     updates = request.json
+    errors = {}
 
-    # Update texts
+    # Update texts (no validation needed for strings)
     if 'texts' in updates:
         current_data['texts'].update(updates['texts'])
 
     # Update capture timestamp
     if 'capture_timestamp' in updates:
-        current_data['capture_timestamp'].update(updates['capture_timestamp'])
-        # Update event timestamp
-        current_data['events'][0]['timestamp'] = (
-            current_data['capture_timestamp']['capture_start_on_original_metadata_timestamp'] +
-            int(current_data['capture_timestamp']['capture_start_time_offset_seconds'])
-        )
-        # Re-search GPX files if timestamp changed
-        try_gpx_files(current_data, current_image_path)
+        # Validate numeric fields
+        if 'capture_start_time_offset_seconds' in updates['capture_timestamp']:
+            try:
+                offset = float(updates['capture_timestamp']['capture_start_time_offset_seconds'])
+                current_data['capture_timestamp']['capture_start_time_offset_seconds'] = offset
+            except (ValueError, TypeError):
+                errors['capture_start_time_offset_seconds'] = 'Must be a valid number'
+        
+        if 'capture_duration_seconds' in updates['capture_timestamp']:
+            try:
+                duration = float(updates['capture_timestamp']['capture_duration_seconds'])
+                current_data['capture_timestamp']['capture_duration_seconds'] = duration
+            except (ValueError, TypeError):
+                errors['capture_duration_seconds'] = 'Must be a valid number'
+        
+        if 'single_capture_picture' in updates['capture_timestamp']:
+            current_data['capture_timestamp']['single_capture_picture'] = updates['capture_timestamp']['single_capture_picture']
+        
+        # Update event timestamp if no errors
+        if not errors:
+            current_data['events'][0]['timestamp'] = (
+                current_data['capture_timestamp']['capture_start_on_original_metadata_timestamp'] +
+                int(current_data['capture_timestamp']['capture_start_time_offset_seconds'])
+            )
+            # Re-search GPX files if timestamp changed
+            try_gpx_files(current_data, current_image_path)
+
+    # Update events
+    if 'events' in updates and len(updates['events']) > 0:
+        if 'timestamp_accuracy_seconds' in updates['events'][0]:
+            try:
+                accuracy = float(updates['events'][0]['timestamp_accuracy_seconds'])
+                current_data['events'][0]['timestamp_accuracy_seconds'] = accuracy
+            except (ValueError, TypeError):
+                errors['timestamp_accuracy_seconds'] = 'Must be a valid number'
 
     # Update geolocation
     if 'geolocation_data' in updates:
         if 'source_manual_entry' in updates['geolocation_data']:
-            current_data['geolocation_data']['source_manual_entry'].update(
-                updates['geolocation_data']['source_manual_entry']
-            )
+            manual_entry = updates['geolocation_data']['source_manual_entry']
+            
+            # Validate latitude
+            if 'Latitude_decimal' in manual_entry:
+                try:
+                    lat = float(manual_entry['Latitude_decimal'])
+                    if -90 <= lat <= 90:
+                        current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = lat
+                        current_data['geolocation_data']['source_manual_entry']['have_data'] = True
+                    else:
+                        errors['Latitude_decimal'] = 'Must be between -90 and 90'
+                except (ValueError, TypeError):
+                    errors['Latitude_decimal'] = 'Must be a valid number'
+                    current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = 100000
+                    current_data['geolocation_data']['source_manual_entry']['have_data'] = False
+            
+            # Validate longitude
+            if 'Longitude_decimal' in manual_entry:
+                try:
+                    lon = float(manual_entry['Longitude_decimal'])
+                    if -180 <= lon <= 180:
+                        current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = lon
+                        current_data['geolocation_data']['source_manual_entry']['have_data'] = True
+                    else:
+                        errors['Longitude_decimal'] = 'Must be between -180 and 180'
+                except (ValueError, TypeError):
+                    errors['Longitude_decimal'] = 'Must be a valid number'
+                    current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = 100000
+                    current_data['geolocation_data']['source_manual_entry']['have_data'] = False
+        
         if 'valid_data_source' in updates['geolocation_data']:
             current_data['geolocation_data']['valid_data_source'] = updates['geolocation_data']['valid_data_source']
             source = current_data['geolocation_data']['valid_data_source']
             current_data['geolocation_data']['have_data'] = current_data['geolocation_data'][source]['have_data']
+        
         if 'display_map_tile_server' in updates['geolocation_data']:
             current_data['geolocation_data']['display_map_tile_server'] = updates['geolocation_data']['display_map_tile_server']
+        
         if 'source_gnss_track_file' in updates['geolocation_data']:
             if 'gnss_device_time_offset_seconds' in updates['geolocation_data']['source_gnss_track_file']:
-                current_data['geolocation_data']['source_gnss_track_file']['gnss_device_time_offset_seconds'] = \
-                    updates['geolocation_data']['source_gnss_track_file']['gnss_device_time_offset_seconds']
-                try_gpx_files(current_data, current_image_path)
+                try:
+                    offset = float(updates['geolocation_data']['source_gnss_track_file']['gnss_device_time_offset_seconds'])
+                    current_data['geolocation_data']['source_gnss_track_file']['gnss_device_time_offset_seconds'] = offset
+                    try_gpx_files(current_data, current_image_path)
+                except (ValueError, TypeError):
+                    errors['gnss_device_time_offset_seconds'] = 'Must be a valid number'
 
-    return jsonify(current_data)
+    if errors:
+        return jsonify({"success": False, "errors": errors, "data": current_data})
+    else:
+        return jsonify({"success": True, "data": current_data})
 
 @app.route('/api/save', methods=['POST'])
 def save_metadata():
