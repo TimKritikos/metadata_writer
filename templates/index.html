@@ -195,35 +195,9 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        .timeline-event {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        
-        .timeline-dot {
-            width: 12px;
-            height: 12px;
-            background: #007bff;
-            border-radius: 50%;
-            margin-right: 15px;
-        }
-        
-        .timeline-content {
-            flex: 1;
-        }
-        
-        .timeline-text {
-            font-weight: 500;
-        }
-        
-        .timeline-date {
-            font-size: 12px;
-            color: #666;
-            margin-top: 4px;
+        #timelineEvents {
+            width: 100%;
+            overflow-x: auto;
         }
         
         .loading-overlay {
@@ -699,26 +673,214 @@
             }
         }
         
+        function formatTimeLabel(date, tSpan) {
+            if (tSpan < 3600) {
+                return date.toLocaleTimeString();
+            } else if (tSpan < 86400) {
+                return date.getHours().toString().padStart(2, '0') + ':' +
+                       date.getMinutes().toString().padStart(2, '0');
+            } else if (tSpan < 86400 * 60) {
+                return date.toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) +
+                       ' ' + date.getHours().toString().padStart(2, '0') + ':' +
+                       date.getMinutes().toString().padStart(2, '0');
+            } else {
+                return date.toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+            }
+        }
+
         function updateTimeline() {
             const container = document.getElementById('timelineEvents');
             container.innerHTML = '';
-            
-            metadata.events.forEach(event => {
-                const div = document.createElement('div');
-                div.className = 'timeline-event';
-                
-                const date = new Date(event.timestamp * 1000);
-                
-                div.innerHTML = `
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-text">${event.text || event.event_type}</div>
-                        <div class="timeline-date">${date.toLocaleString()}</div>
-                    </div>
-                `;
-                
-                container.appendChild(div);
+
+            if (!metadata.events || metadata.events.length === 0) {
+                container.innerHTML = '<p style="color:#888;padding:20px">No events to display</p>';
+                return;
+            }
+
+            const sorted = [...metadata.events].sort((a, b) => a.timestamp - b.timestamp);
+
+            // Layout constants
+            const W = container.clientWidth || 900;
+            const padX = 50;
+            const drawW = W - 2 * padX;
+            const rowH = 40;
+            const rowGap = 4;
+            const minLeader = 18; // min px between axis and bottom of closest label row
+            const axisTickH = 45; // space below axis for tick labels
+            const dotR = 6;
+            const MAX_LABEL = 30;
+
+            // Time range — add 10% padding on each side so edge events aren't flush
+            const t0 = sorted[0].timestamp;
+            const t1 = sorted[sorted.length - 1].timestamp;
+            const tSpan = Math.max(t1 - t0, 1);
+            const tPad = tSpan * 0.10;
+            const tDrawStart = t0 - tPad;
+            const tDrawEnd   = t1 + tPad;
+            const tDrawSpan  = tDrawEnd - tDrawStart;
+            const xOf = ts => padX + ((ts - tDrawStart) / tDrawSpan) * drawW;
+
+            const labelText = e => (e.text || e.event_type || 'Event').substring(0, MAX_LABEL);
+            const fmtTime = d =>
+                d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0') + ' ' +
+                String(d.getHours()).padStart(2, '0') + ':' +
+                String(d.getMinutes()).padStart(2, '0') + ':' +
+                String(d.getSeconds()).padStart(2, '0');
+            // Estimate rendered label width — wide enough for both lines
+            const labelW = (lbl, ts) => Math.min(220, Math.max(60, Math.max(lbl.length, ts.length) * 7 + 20));
+
+            // Build event objects
+            const evs = sorted.map(e => {
+                const time = new Date(e.timestamp * 1000);
+                const label = labelText(e);
+                const ts = fmtTime(time);
+                return {
+                    x: xOf(e.timestamp),
+                    label,
+                    ts,
+                    type: e.event_type,
+                    accuracy: e.timestamp_accuracy_seconds || 0,
+                    time
+                };
             });
+
+            // Greedy row assignment: place each label in the lowest row that doesn't overlap
+            // Row 0 = closest to axis
+            const rowOccupied = [];
+            const evRow = [];
+            for (const ev of evs) {
+                const lw = labelW(ev.label, ev.ts);
+                const x1 = ev.x - lw / 2 - 2;
+                const x2 = ev.x + lw / 2 + 2;
+                let r = 0;
+                for (;;) {
+                    if (!rowOccupied[r]) rowOccupied[r] = [];
+                    if (!rowOccupied[r].some(s => x1 < s.x2 && x2 > s.x1)) {
+                        rowOccupied[r].push({ x1, x2 });
+                        break;
+                    }
+                    r++;
+                }
+                evRow.push(r);
+            }
+
+            const numRows = Math.max(...evRow) + 1;
+
+            // axisY: enough room above for all label rows + leader gap + top padding
+            const axisY = minLeader + numRows * (rowH + rowGap) + 10;
+            const totalH = axisY + axisTickH;
+
+            // Top of label box for row r (row 0 = nearest to axis)
+            const rowY = r => axisY - minLeader - r * (rowH + rowGap) - rowH;
+
+            // SVG setup
+            const NS = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(NS, 'svg');
+            svg.setAttribute('width', W);
+            svg.setAttribute('height', totalH);
+            svg.style.cssText = 'display:block;overflow:visible;';
+
+            const mk = (tag, attrs, parent) => {
+                const e = document.createElementNS(NS, tag);
+                for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+                (parent || svg).appendChild(e);
+                return e;
+            };
+
+            // ── Accuracy bands (behind everything) ───────────────────────────
+            evs.forEach(ev => {
+                if (ev.accuracy > 0) {
+                    const bw = Math.max(4, (ev.accuracy * 2 / tDrawSpan) * drawW);
+                    mk('rect', {
+                        x: ev.x - bw / 2, y: axisY - 5,
+                        width: bw, height: 10,
+                        rx: 2, fill: 'rgba(0,123,255,0.15)'
+                    });
+                }
+            });
+
+            // ── Axis line + arrowhead ─────────────────────────────────────────
+            mk('line', { x1: padX - 10, y1: axisY, x2: W - padX + 5, y2: axisY,
+                         stroke: '#444', 'stroke-width': 2 });
+            const arrowX = W - padX + 14;
+            mk('polygon', {
+                points: `${arrowX},${axisY} ${arrowX-10},${axisY-4} ${arrowX-10},${axisY+4}`,
+                fill: '#444'
+            });
+
+            // ── Time tick marks ───────────────────────────────────────────────
+            const tickCount = Math.max(2, Math.min(8, Math.floor(drawW / 100)));
+            for (let i = 0; i <= tickCount; i++) {
+                const frac = i / tickCount;
+                const tx = padX + frac * drawW;
+                const ts = tDrawStart + frac * tDrawSpan;
+                const date = new Date(ts * 1000);
+                mk('line', { x1: tx, y1: axisY, x2: tx, y2: axisY + 8,
+                             stroke: '#999', 'stroke-width': 1 });
+                const txt = mk('text', {
+                    x: tx, y: axisY + 22,
+                    'text-anchor': 'middle',
+                    'font-size': 11, fill: '#555',
+                    'font-family': '-apple-system, BlinkMacSystemFont, sans-serif'
+                });
+                txt.textContent = formatTimeLabel(date, tSpan);
+            }
+
+            // ── Events ────────────────────────────────────────────────────────
+            evs.forEach((ev, i) => {
+                const r = evRow[i];
+                const ly = rowY(r);
+                const lw = labelW(ev.label, ev.ts);
+                // Clamp label so it doesn't overflow the SVG edges
+                const lx = Math.max(padX, Math.min(W - padX - lw, ev.x - lw / 2));
+
+                // Leader line: axis dot → bottom of label box
+                mk('line', {
+                    x1: ev.x, y1: axisY - dotR,
+                    x2: ev.x, y2: ly + rowH,
+                    stroke: '#ccc', 'stroke-width': 1, 'stroke-dasharray': '3,2'
+                });
+
+                // Dot on axis
+                const dot = mk('circle', {
+                    cx: ev.x, cy: axisY, r: dotR,
+                    fill: '#007bff', stroke: 'white', 'stroke-width': 2
+                });
+                dot.style.cursor = 'pointer';
+                const tip = document.createElementNS(NS, 'title');
+                tip.textContent = [
+                    ev.label,
+                    ev.ts,
+                    `Type: ${ev.type}`,
+                    ev.accuracy ? `Accuracy: ±${ev.accuracy}s` : ''
+                ].filter(Boolean).join('\n');
+                dot.appendChild(tip);
+
+                // Label pill — two lines: event name + timestamp
+                mk('rect', { x: lx, y: ly, width: lw, height: rowH, rx: 4, fill: '#007bff' });
+
+                const ltxt = mk('text', {
+                    x: lx + lw / 2, y: ly + 15,
+                    'text-anchor': 'middle',
+                    'font-size': 11, fill: 'white',
+                    'font-family': '-apple-system, BlinkMacSystemFont, sans-serif',
+                    'pointer-events': 'none'
+                });
+                ltxt.textContent = ev.label;
+
+                const ttxt = mk('text', {
+                    x: lx + lw / 2, y: ly + 30,
+                    'text-anchor': 'middle',
+                    'font-size': 10, fill: 'rgba(255,255,255,0.85)',
+                    'font-family': '-apple-system, BlinkMacSystemFont, sans-serif',
+                    'pointer-events': 'none'
+                });
+                ttxt.textContent = ev.ts;
+            });
+
+            container.appendChild(svg);
         }
         
         async function updateTexts() {
