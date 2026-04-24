@@ -193,6 +193,10 @@ def main():
             utc_dt = dt.replace(tzinfo=timezone.utc)
             data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"]=int(utc_dt.timestamp())  # Unix epoch time
         elif tag == 'GPSInfo':
+            latitude_nautical = None
+            latitude_nautical_ref = None
+            longitude_nautical = None
+            longitude_nautical_ref = None
             for t in value:
                 sub_decoded = GPSTAGS.get(t, t)
                 if sub_decoded == "GPSLatitude":
