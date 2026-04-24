@@ -292,33 +292,46 @@ def update_metadata():
         if 'source_manual_entry' in updates['geolocation_data']:
             manual_entry = updates['geolocation_data']['source_manual_entry']
             
-            # Validate latitude
-            if 'Latitude_decimal' in manual_entry:
-                try:
-                    lat = float(manual_entry['Latitude_decimal'])
-                    if -90 <= lat <= 90:
-                        current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = lat
-                        current_data['geolocation_data']['source_manual_entry']['have_data'] = True
-                    else:
-                        errors['Latitude_decimal'] = 'Must be between -90 and 90'
-                except (ValueError, TypeError):
-                    errors['Latitude_decimal'] = 'Must be a valid number'
+            # Check if both fields are provided
+            if 'Latitude_decimal' in manual_entry and 'Longitude_decimal' in manual_entry:
+                lat_str = str(manual_entry['Latitude_decimal']).strip()
+                lon_str = str(manual_entry['Longitude_decimal']).strip()
+                
+                # Both empty is valid (no data)
+                if lat_str == '' and lon_str == '':
                     current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = 100000
-                    current_data['geolocation_data']['source_manual_entry']['have_data'] = False
-            
-            # Validate longitude
-            if 'Longitude_decimal' in manual_entry:
-                try:
-                    lon = float(manual_entry['Longitude_decimal'])
-                    if -180 <= lon <= 180:
-                        current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = lon
-                        current_data['geolocation_data']['source_manual_entry']['have_data'] = True
-                    else:
-                        errors['Longitude_decimal'] = 'Must be between -180 and 180'
-                except (ValueError, TypeError):
-                    errors['Longitude_decimal'] = 'Must be a valid number'
                     current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = 100000
                     current_data['geolocation_data']['source_manual_entry']['have_data'] = False
+                # Both must have valid values
+                elif lat_str != '' and lon_str != '':
+                    try:
+                        lat = float(lat_str)
+                        lon = float(lon_str)
+                        
+                        lat_valid = -90 <= lat <= 90
+                        lon_valid = -180 <= lon <= 180
+                        
+                        if lat_valid and lon_valid:
+                            current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = lat
+                            current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = lon
+                            current_data['geolocation_data']['source_manual_entry']['have_data'] = True
+                        else:
+                            # Both invalid if either is out of range
+                            if not lat_valid:
+                                errors['Latitude_decimal'] = 'Must be between -90 and 90'
+                            if not lon_valid:
+                                errors['Longitude_decimal'] = 'Must be between -180 and 180'
+                            # Mark both as invalid
+                            errors['Latitude_decimal'] = errors.get('Latitude_decimal', 'Both fields must be valid or both empty')
+                            errors['Longitude_decimal'] = errors.get('Longitude_decimal', 'Both fields must be valid or both empty')
+                    except (ValueError, TypeError):
+                        # Both invalid if either can't be parsed
+                        errors['Latitude_decimal'] = 'Must be a valid number'
+                        errors['Longitude_decimal'] = 'Must be a valid number'
+                else:
+                    # One empty, one not - both invalid
+                    errors['Latitude_decimal'] = 'Both fields must be filled or both empty'
+                    errors['Longitude_decimal'] = 'Both fields must be filled or both empty'
         
         if 'valid_data_source' in updates['geolocation_data']:
             current_data['geolocation_data']['valid_data_source'] = updates['geolocation_data']['valid_data_source']

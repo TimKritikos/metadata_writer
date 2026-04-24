@@ -597,8 +597,11 @@
             document.getElementById('exifLon').value = exifData.have_data ? exifData.Longitude_decimal : '';
             
             const manualData = metadata.geolocation_data.source_manual_entry;
-            document.getElementById('manualLat').value = manualData.have_data ? manualData.Latitude_decimal : '';
-            document.getElementById('manualLon').value = manualData.have_data ? manualData.Longitude_decimal : '';
+            // Show empty fields if have_data is false or lat/lon are placeholder values
+            const showManualLat = manualData.have_data && manualData.Latitude_decimal !== 100000;
+            const showManualLon = manualData.have_data && manualData.Longitude_decimal !== 100000;
+            document.getElementById('manualLat').value = showManualLat ? manualData.Latitude_decimal : '';
+            document.getElementById('manualLon').value = showManualLon ? manualData.Longitude_decimal : '';
             
             updateMap();
             
