@@ -85,12 +85,12 @@ def load_image_metadata(image_path):
                 "text": ""
             },
             #{
-            #   "event_id":2,
-            #   "event_type": "data_modification",
-            #   "time_mode": "dated",
-            #   "timestamp_start_ms": 0,
-            #   "timestamp_end_ms": 0,
-            #   "text": "Raw file developed"
+            #    "event_id":2,
+            #    "event_type": "data_modification",
+            #    "time_mode": "dated",
+            #    "timestamp_start_ms": 0,
+            #    "timestamp_end_ms": 0,
+            #    "text": "Raw file developed"
             #},
             {
                 "event_id":1,
@@ -101,10 +101,10 @@ def load_image_metadata(image_path):
 
                 "text": "Initial metadata written",
                 "modified_metadata_modules":[
-                        "texts",
-                        "capture_timestamp",
-                        "constants",
-                        "geolocation_data"
+                    "texts",
+                    "capture_timestamp",
+                    "constants",
+                    "geolocation_data"
                 ]
             }
         ],
@@ -244,11 +244,11 @@ def update_metadata():
     """Update metadata with validation"""
     global current_data
     updates = request.json
-    
+
     # Validate session key
     if 'session_key' not in updates or updates['session_key'] != session_key:
         return jsonify({"success": False, "error": "invalid_session", "message": "Session expired. Please reload the page."}), 403
-    
+
     errors = {}
 
     # Update texts (no validation needed for strings)
@@ -293,12 +293,12 @@ def update_metadata():
     if 'geolocation_data' in updates:
         if 'source_manual_entry' in updates['geolocation_data']:
             manual_entry = updates['geolocation_data']['source_manual_entry']
-            
+
             # Check if both fields are provided
             if 'Latitude_decimal' in manual_entry and 'Longitude_decimal' in manual_entry:
                 lat_str = str(manual_entry['Latitude_decimal']).strip()
                 lon_str = str(manual_entry['Longitude_decimal']).strip()
-                
+
                 # Both empty is valid (no data)
                 if lat_str == '' and lon_str == '':
                     current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = 100000
@@ -309,10 +309,10 @@ def update_metadata():
                     try:
                         lat = float(lat_str)
                         lon = float(lon_str)
-                        
+
                         lat_valid = -90 <= lat <= 90
                         lon_valid = -180 <= lon <= 180
-                        
+
                         if lat_valid and lon_valid:
                             current_data['geolocation_data']['source_manual_entry']['Latitude_decimal'] = lat
                             current_data['geolocation_data']['source_manual_entry']['Longitude_decimal'] = lon
@@ -334,15 +334,15 @@ def update_metadata():
                     # One empty, one not - both invalid
                     errors['Latitude_decimal'] = 'Both fields must be filled or both empty'
                     errors['Longitude_decimal'] = 'Both fields must be filled or both empty'
-        
+
         if 'valid_data_source' in updates['geolocation_data']:
             current_data['geolocation_data']['valid_data_source'] = updates['geolocation_data']['valid_data_source']
             source = current_data['geolocation_data']['valid_data_source']
             current_data['geolocation_data']['have_data'] = current_data['geolocation_data'][source]['have_data']
-        
+
         if 'display_map_tile_server' in updates['geolocation_data']:
             current_data['geolocation_data']['display_map_tile_server'] = updates['geolocation_data']['display_map_tile_server']
-        
+
         if 'source_gnss_track_file' in updates['geolocation_data']:
             if 'gnss_device_time_offset_seconds' in updates['geolocation_data']['source_gnss_track_file']:
                 try:
@@ -361,11 +361,11 @@ def update_metadata():
 def save_metadata():
     """Save metadata to JSON file"""
     updates = request.json
-    
+
     # Validate session key
     if 'session_key' not in updates or updates['session_key'] != session_key:
         return jsonify({"success": False, "error": "invalid_session", "message": "Session expired. Please reload the page."}), 403
-    
+
     output_path = Path(current_data["constants"]["image_file_full_path"]).with_suffix(".json")
 
     with open(output_path, "w") as f:
