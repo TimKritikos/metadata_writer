@@ -186,13 +186,15 @@
         }
         
         input.pending,
-        textarea.pending {
+        textarea.pending,
+        select.pending {
             background-color: #fff3cd;
             border-color: #ffc107;
         }
-        
+
         input.invalid,
-        textarea.invalid {
+        textarea.invalid,
+        select.invalid {
             background-color: #f8d7da;
             border-color: #dc3545;
         }
@@ -649,6 +651,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let metadata = {};
+        let cachedExifTimestamp = null;
         let map = null;
         let marker = null;
         let currentTileLayer = null;
@@ -705,6 +708,27 @@
                 field.classList.add('invalid');
                 fieldStates[fieldId] = 'invalid';
             }
+        }
+
+        function markCardFieldsPending() {
+            document.querySelectorAll('#eventsList .event-card-body input, #eventsList .event-card-body select').forEach(el => {
+                el.classList.remove('invalid');
+                el.classList.add('pending');
+            });
+        }
+
+        function markCardFieldsValid() {
+            document.querySelectorAll('#eventsList .event-card-body input, #eventsList .event-card-body select').forEach(el => {
+                el.classList.remove('pending', 'invalid');
+                if (el.validity && !el.validity.valid) el.classList.add('invalid');
+            });
+        }
+
+        function markCardFieldsInvalid() {
+            document.querySelectorAll('#eventsList .event-card-body input, #eventsList .event-card-body select').forEach(el => {
+                el.classList.remove('pending');
+                el.classList.add('invalid');
+            });
         }
         
         // Debounce function to delay API calls
@@ -800,6 +824,10 @@
                 const result = await response.json();
                 metadata = result.data;
                 sessionKey = result.session_key;
+                const firstExifEv = (metadata.events || []).find(
+                    e => e.event_type === 'capture_start' && e.time?.provenance?.type === 'derived'
+                );
+                if (firstExifEv) cachedExifTimestamp = firstExifEv.time.provenance.exif_timestamp;
                 updateUI();
                 
                 // Load image
@@ -904,15 +932,15 @@
             }
 
             // Separate dated and annual events
-            const datedEvents = metadata.events.filter(e => e.time_mode !== 'annual' && e.timestamp_start_ms != null);
-            const annualEvents = metadata.events.filter(e => e.time_mode === 'annual');
+            const datedEvents = metadata.events.filter(e => e.time?.mode !== 'annual' && e.time?.start != null);
+            const annualEvents = metadata.events.filter(e => e.time?.mode === 'annual');
 
             if (datedEvents.length === 0 && annualEvents.length === 0) {
                 container.innerHTML = '<p style="color:#888;padding:20px">No events to display</p>';
                 return;
             }
 
-            const sorted = [...datedEvents].sort((a, b) => a.timestamp_start_ms - b.timestamp_start_ms);
+            const sorted = [...datedEvents].sort((a, b) => a.time.start - b.time.start);
 
             // Layout constants
             const W = container.clientWidth || 900;
@@ -927,7 +955,7 @@
 
             // Event type colours
             const TYPE_COLOR = {
-                shot: '#007bff', film_scan: '#28a745', print_scan: '#6f42c1',
+                capture_start: '#007bff', film_scan: '#28a745', print_scan: '#6f42c1',
                 film_development: '#fd7e14', print: '#dc3545',
                 metadata_modification: '#6c757d'
             };
@@ -947,8 +975,8 @@
                 // No dated events — skip SVG, only show annual below
             } else {
             // Time range — add 10% padding on each side so edge events aren't flush
-            const t0 = sorted[0].timestamp_start_ms;
-            const t1 = sorted[sorted.length - 1].timestamp_start_ms;
+            const t0 = sorted[0].time.start * 1000;
+            const t1 = sorted[sorted.length - 1].time.start * 1000;
             const tSpan = Math.max(t1 - t0, 1000);
             const tPad = tSpan * 0.10;
             const tDrawStart = t0 - tPad;
@@ -958,17 +986,18 @@
 
             // Build event objects
             const evs = sorted.map(e => {
-                const time = new Date(e.timestamp_start_ms);
+                const startMs = e.time.start * 1000;
+                const date = new Date(startMs);
                 const label = labelText(e);
-                const ts = fmtTime(time);
-                const rangeMs = e.timestamp_end_ms - e.timestamp_start_ms;
+                const ts = fmtTime(date);
+                const rangeMs = (e.time.end - e.time.start) * 1000;
                 return {
-                    x: xOf(e.timestamp_start_ms),
+                    x: xOf(startMs),
                     label, ts,
                     type: e.event_type,
                     color: evColor(e.event_type),
                     rangeMs,
-                    time
+                    time: date
                 };
             });
 
@@ -1118,7 +1147,7 @@
                 heading.textContent = 'Annual events:';
                 annualDiv.appendChild(heading);
                 annualEvents.forEach(e => {
-                    const d = new Date(e.timestamp_start_ms);
+                    const d = new Date(e.time.start * 1000);
                     const chip = document.createElement('span');
                     chip.className = 'annual-event-chip';
                     chip.style.cssText = `background:${evColor(e.event_type)};color:white;border:none;`;
@@ -1389,7 +1418,7 @@
 
         // ── Event Widget ──────────────────────────────────────────────────────
         const EVENT_TYPES = [
-            { value: 'shot',             label: 'Shot Time' },
+            { value: 'capture_start',    label: 'Capture Start' },
             { value: 'film_scan',        label: 'Film Scan Time' },
             { value: 'print_scan',       label: 'Print Scan Time' },
             { value: 'film_development', label: 'Film Development Time' },
@@ -1435,6 +1464,13 @@
             return Date.parse('1970-' + m + '-' + dd + 'T' + (timeStr || '00:00:00') + 'Z');
         }
 
+        function getExifTimestamp() {
+            const captureEv = (metadata.events || []).find(
+                e => e.event_type === 'capture_start' && e.time?.provenance?.type === 'derived'
+            );
+            return captureEv ? captureEv.time.provenance.exif_timestamp : cachedExifTimestamp;
+        }
+
         function renderEventsWidget() {
             const container = document.getElementById('eventsList');
             container.innerHTML = '';
@@ -1459,16 +1495,30 @@
                 if (et.value === ev.event_type) opt.selected = true;
                 typeSelect.appendChild(opt);
             });
-            typeSelect.onchange = () => onEventChange(card);
+            typeSelect.onchange = () => {
+                const provTypeEl = card.querySelector('[data-field="provenance_type"]');
+                if (provTypeEl) {
+                    const isDerivedCapable = typeSelect.value === 'capture_start' && getExifTimestamp() !== null;
+                    const derivedOpt = provTypeEl.querySelector('option[value="derived"]');
+                    if (derivedOpt) derivedOpt.disabled = !isDerivedCapable;
+                    if (provTypeEl.value === 'derived' && !isDerivedCapable) {
+                        provTypeEl.value = 'text';
+                        onProvenanceTypeChange(card);
+                        return;
+                    }
+                }
+                onEventChange(card);
+            };
 
             const modeLabel = document.createElement('label');
             modeLabel.className = 'mode-label';
             const modeCheck = document.createElement('input');
             modeCheck.type = 'checkbox';
-            modeCheck.checked = ev.time_mode === 'annual';
+            modeCheck.checked = ev.time?.mode === 'annual';
             modeCheck.onchange = () => onEventModeChange(card);
             modeLabel.appendChild(modeCheck);
             modeLabel.appendChild(document.createTextNode(' Annual'));
+            if (ev.time?.provenance?.type === 'derived') modeLabel.style.display = 'none';
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'remove-event-btn';
@@ -1480,15 +1530,102 @@
 
             const body = document.createElement('div');
             body.className = 'event-card-body';
-            body.appendChild(ev.time_mode === 'annual' ? buildAnnualBody(ev) : buildDatedBody(ev));
+            body.appendChild(ev.time?.mode === 'annual' ? buildAnnualBody(ev) : buildDatedBody(ev));
 
             card.append(header, body);
             return card;
         }
 
+        function buildDerivedFields(ev) {
+            const frag = document.createDocumentFragment();
+            const prov = ev.time.provenance;
+            const exifTs = prov.exif_timestamp || 0;
+            const drift   = prov.clock_drift_offset || 0;
+
+            const mkRow = (labelText, ...children) => {
+                const row = document.createElement('div');
+                row.className = 'event-time-row';
+                const lbl = document.createElement('span');
+                lbl.className = 'event-time-label';
+                lbl.textContent = labelText;
+                row.append(lbl, ...children);
+                return row;
+            };
+            const roSpan = text => {
+                const s = document.createElement('span');
+                s.style.cssText = 'font-family:monospace;font-size:13px;';
+                s.textContent = text;
+                return s;
+            };
+
+            frag.appendChild(mkRow('EXIF Timestamp',
+                roSpan(utcMsToDateInput(exifTs * 1000) + ' ' + utcMsToTimeInput(exifTs * 1000) + ' UTC')));
+            frag.appendChild(mkRow('Clock Drift', roSpan(drift.toFixed(3) + ' s')));
+
+            const extraRow = document.createElement('div');
+            extraRow.className = 'event-time-row';
+            const extraLbl = document.createElement('span');
+            extraLbl.className = 'event-time-label';
+            extraLbl.textContent = 'Extra Offset';
+            const extraInput = document.createElement('input');
+            extraInput.type = 'number';
+            extraInput.step = 'any';
+            extraInput.dataset.field = 'extra_offset';
+            extraInput.style.cssText = 'width:90px;';
+            extraInput.value = (prov.extra_offset || 0).toFixed(3);
+            const unitLbl = document.createElement('span');
+            unitLbl.className = 'utc-label';
+            unitLbl.textContent = 's';
+            const resultSpan = document.createElement('span');
+            resultSpan.style.cssText = 'font-family:monospace;font-size:12px;color:#666;margin-left:8px;';
+            const refreshResult = () => {
+                const computed = exifTs + drift + (parseFloat(extraInput.value) || 0);
+                resultSpan.textContent = '\u2192 ' + utcMsToDateInput(computed * 1000) + ' ' + utcMsToTimeInput(computed * 1000) + ' UTC';
+            };
+            refreshResult();
+            extraInput.addEventListener('input', e => { refreshResult(); onEventChange(e.target.closest('.event-card')); });
+            extraRow.append(extraLbl, extraInput, unitLbl, resultSpan);
+            frag.appendChild(extraRow);
+
+            return frag;
+        }
+
         function buildDatedBody(ev) {
             const frag = document.createDocumentFragment();
+            const provType = ev.time?.provenance?.type || 'text';
 
+            // ── Provenance type selector ──────────────────────────────
+            const isDerivedCapable = ev.event_type === 'capture_start' && getExifTimestamp() !== null;
+            const provRow = document.createElement('div');
+            provRow.className = 'event-time-row';
+            const provLbl = document.createElement('span');
+            provLbl.className = 'event-time-label';
+            provLbl.textContent = 'Provenance';
+            const provSelect = document.createElement('select');
+            provSelect.dataset.field = 'provenance_type';
+            [
+                { value: 'text',    label: 'Manual / Verbal' },
+                { value: 'derived', label: 'EXIF + Offsets' }
+            ].forEach(pt => {
+                const opt = document.createElement('option');
+                opt.value = pt.value;
+                opt.textContent = pt.label;
+                if (pt.value === 'derived' && !isDerivedCapable) opt.disabled = true;
+                if (pt.value === provType) opt.selected = true;
+                provSelect.appendChild(opt);
+            });
+            provSelect.onchange = e => onProvenanceTypeChange(e.target.closest('.event-card'));
+            provRow.append(provLbl, provSelect);
+            frag.appendChild(provRow);
+
+            // ── Derived fields ────────────────────────────────────────
+            if (provType === 'derived') {
+                frag.appendChild(buildDerivedFields(ev));
+                frag.appendChild(buildNoteRow(ev));
+                return frag;
+            }
+
+            // ── Date/time inputs (text and template) ──────────────────
             const mkTimeRow = (labelText, dateField, timeField) => {
                 const row = document.createElement('div');
                 row.className = 'event-time-row';
@@ -1514,17 +1651,54 @@
             };
 
             const startRow = mkTimeRow('Start', 'start_date', 'start_time');
-            startRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.timestamp_start_ms);
-            startRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.timestamp_start_ms);
-
+            startRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.time.start * 1000);
+            startRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.time.start * 1000);
             const endRow = mkTimeRow('End', 'end_date', 'end_time');
-            endRow.querySelector('[data-field="end_date"]').value = utcMsToDateInput(ev.timestamp_end_ms);
-            endRow.querySelector('[data-field="end_time"]').value = utcMsToTimeInput(ev.timestamp_end_ms);
-
+            endRow.querySelector('[data-field="end_date"]').value = utcMsToDateInput(ev.time.end * 1000);
+            endRow.querySelector('[data-field="end_time"]').value = utcMsToTimeInput(ev.time.end * 1000);
             const hint = document.createElement('div');
             hint.className = 'event-hint';
             hint.textContent = 'Set start = end for a point-in-time event';
+            frag.append(startRow, endRow, hint);
 
+            // ── Provenance extra field ────────────────────────────────
+            if (provType === 'text') {
+                const datalistId = 'prov-presets-' + ev.event_id;
+                const datalist = document.createElement('datalist');
+                datalist.id = datalistId;
+                [
+                    'From file creation date',
+                    'From printed date on photo',
+                    'Stated on original media',
+                    'Estimated from context',
+                    'From album or caption'
+                ].forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    datalist.appendChild(opt);
+                });
+                const srcRow = document.createElement('div');
+                srcRow.className = 'event-time-row';
+                const srcLbl = document.createElement('span');
+                srcLbl.className = 'event-time-label';
+                srcLbl.textContent = 'Source';
+                const srcInput = document.createElement('input');
+                srcInput.type = 'text';
+                srcInput.dataset.field = 'provenance_description';
+                srcInput.setAttribute('list', datalistId);
+                srcInput.style.flex = '1';
+                srcInput.placeholder = 'e.g. John said this was taken in December 1985';
+                srcInput.value = ev.time?.provenance?.description || '';
+                srcInput.oninput = e => onEventChange(e.target.closest('.event-card'));
+                srcRow.append(srcLbl, srcInput, datalist);
+                frag.appendChild(srcRow);
+            }
+
+            frag.appendChild(buildNoteRow(ev));
+            return frag;
+        }
+
+        function buildNoteRow(ev) {
             const textRow = document.createElement('div');
             textRow.className = 'event-time-row';
             const textLbl = document.createElement('span');
@@ -1538,9 +1712,7 @@
             textInput.value = ev.text || '';
             textInput.oninput = e => onEventChange(e.target.closest('.event-card'));
             textRow.append(textLbl, textInput);
-
-            frag.append(startRow, endRow, hint, textRow);
-            return frag;
+            return textRow;
         }
 
         function buildAnnualBody(ev) {
@@ -1586,28 +1758,14 @@
                 return row;
             };
 
-            const startRow = mkAnnualRow('From', 'start_month', 'start_day', 'start_time_annual', ev.timestamp_start_ms);
-            const endRow   = mkAnnualRow('To',   'end_month',   'end_day',   'end_time_annual',   ev.timestamp_end_ms || ev.timestamp_start_ms);
+            const startRow = mkAnnualRow('From', 'start_month', 'start_day', 'start_time_annual', ev.time.start * 1000);
+            const endRow   = mkAnnualRow('To',   'end_month',   'end_day',   'end_time_annual',   (ev.time.end ?? ev.time.start) * 1000);
 
             const hint = document.createElement('div');
             hint.className = 'event-hint';
             hint.textContent = 'Year unknown \u2014 stored as 1970 timestamps';
 
-            const textRow = document.createElement('div');
-            textRow.className = 'event-time-row';
-            const textLbl = document.createElement('span');
-            textLbl.className = 'event-time-label';
-            textLbl.textContent = 'Note';
-            const textInput = document.createElement('input');
-            textInput.type = 'text';
-            textInput.dataset.field = 'text';
-            textInput.style.flex = '1';
-            textInput.placeholder = 'Optional note';
-            textInput.value = ev.text || '';
-            textInput.oninput = e => onEventChange(e.target.closest('.event-card'));
-            textRow.append(textLbl, textInput);
-
-            frag.append(startRow, endRow, hint, textRow);
+            frag.append(startRow, endRow, hint, buildNoteRow(ev));
             return frag;
         }
 
@@ -1620,10 +1778,86 @@
             onEventChange(card);
         }
 
+        function onProvenanceTypeChange(card) {
+            const newProvType = card.querySelector('[data-field="provenance_type"]').value;
+            const eventId = parseInt(card.dataset.eventId) || Date.now();
+            const existing = (metadata.events || []).find(e => e.event_id === eventId);
+            const oldProv = existing?.time?.provenance || { type: 'text', description: '' };
+            const typeSelect = card.querySelector('.event-type-select');
+            const text = card.querySelector('[data-field="text"]')?.value || '';
+
+            // Read current time using the OLD provenance type still shown in the body
+            let currentStartS, currentEndS;
+            if (oldProv.type === 'derived') {
+                const extra = parseFloat(card.querySelector('[data-field="extra_offset"]')?.value || 0) || 0;
+                const s = (oldProv.exif_timestamp || 0) + (oldProv.clock_drift_offset || 0) + extra;
+                currentStartS = s;
+                currentEndS = s;
+            } else {
+                const startMs = dateTimeToUtcMs(
+                    card.querySelector('[data-field="start_date"]')?.value,
+                    card.querySelector('[data-field="start_time"]')?.value);
+                const endMs = dateTimeToUtcMs(
+                    card.querySelector('[data-field="end_date"]')?.value,
+                    card.querySelector('[data-field="end_time"]')?.value);
+                currentStartS = isNaN(startMs) ? (existing?.time?.start || 0) : startMs / 1000;
+                currentEndS   = isNaN(endMs)   ? (existing?.time?.end   || currentStartS) : endMs / 1000;
+            }
+
+            let newProv;
+            if (newProvType === 'derived') {
+                const exifTs = getExifTimestamp() || 0;
+                const drift  = oldProv.type === 'derived' ? oldProv.clock_drift_offset : 0.0;
+                const extra  = oldProv.type === 'derived' ? oldProv.extra_offset       : 0.0;
+                newProv = { type: 'derived', exif_timestamp: exifTs, clock_drift_offset: drift, extra_offset: extra };
+                currentStartS = exifTs + drift + extra;
+                currentEndS   = currentStartS;
+            } else {
+                newProv = { type: 'text', description: oldProv.type === 'text' ? (oldProv.description || '') : '' };
+            }
+
+            const updatedEv = {
+                event_id: eventId,
+                event_type: typeSelect.value,
+                time: { mode: 'dated', start: currentStartS, end: currentEndS, provenance: newProv },
+                text
+            };
+            const body = card.querySelector('.event-card-body');
+            body.innerHTML = '';
+            body.appendChild(buildDatedBody(updatedEv));
+            onEventChange(card);
+        }
+
         function readEventFromCard(card) {
-            const isAnnual = card.querySelector('input[type="checkbox"]').checked;
+            const eventId = parseInt(card.dataset.eventId) || Date.now();
+            const existing = (metadata.events || []).find(e => e.event_id === eventId);
             const typeSelect = card.querySelector('.event-type-select');
             const text = (card.querySelector('[data-field="text"]') || {}).value || '';
+
+            // Provenance type: read from select if present, else fall back to saved
+            const provTypeEl = card.querySelector('[data-field="provenance_type"]');
+            const provType = provTypeEl ? provTypeEl.value : (existing?.time?.provenance?.type || 'text');
+            const oldProv = existing?.time?.provenance || { type: 'text', description: '' };
+
+            if (provType === 'derived') {
+                const extra = parseFloat(card.querySelector('[data-field="extra_offset"]')?.value || 0) || 0;
+                const exifTs = oldProv.type === 'derived' ? oldProv.exif_timestamp : (getExifTimestamp() || 0);
+                const drift  = oldProv.type === 'derived' ? oldProv.clock_drift_offset : 0.0;
+                const computedS = exifTs + drift + extra;
+                return {
+                    event_id: eventId,
+                    event_type: typeSelect.value,
+                    time: {
+                        mode: 'dated',
+                        start: computedS,
+                        end: computedS,
+                        provenance: { type: 'derived', exif_timestamp: exifTs, clock_drift_offset: drift, extra_offset: extra }
+                    },
+                    text
+                };
+            }
+
+            const isAnnual = card.querySelector('input[type="checkbox"]').checked;
             let startMs, endMs;
             if (isAnnual) {
                 startMs = annualToMs(
@@ -1636,18 +1870,27 @@
                     card.querySelector('[data-field="end_time_annual"]').value);
             } else {
                 startMs = dateTimeToUtcMs(
-                    card.querySelector('[data-field="start_date"]').value,
-                    card.querySelector('[data-field="start_time"]').value);
+                    card.querySelector('[data-field="start_date"]')?.value,
+                    card.querySelector('[data-field="start_time"]')?.value);
                 endMs = dateTimeToUtcMs(
-                    card.querySelector('[data-field="end_date"]').value,
-                    card.querySelector('[data-field="end_time"]').value);
+                    card.querySelector('[data-field="end_date"]')?.value,
+                    card.querySelector('[data-field="end_time"]')?.value);
             }
+
+            const provenance = {
+                type: 'text',
+                description: card.querySelector('[data-field="provenance_description"]')?.value ?? oldProv.description ?? ''
+            };
+
             return {
-                event_id: parseInt(card.dataset.eventId) || Date.now(),
+                event_id: eventId,
                 event_type: typeSelect.value,
-                time_mode: isAnnual ? 'annual' : 'dated',
-                timestamp_start_ms: isNaN(startMs) ? 0 : startMs,
-                timestamp_end_ms: isNaN(endMs) ? (isNaN(startMs) ? 0 : startMs) : endMs,
+                time: {
+                    mode: isAnnual ? 'annual' : 'dated',
+                    start: isNaN(startMs) ? 0 : startMs / 1000,
+                    end: isNaN(endMs) ? (isNaN(startMs) ? 0 : startMs / 1000) : endMs / 1000,
+                    provenance
+                },
                 text
             };
         }
@@ -1658,8 +1901,10 @@
 
         function addEvent() {
             const now = Date.now();
-            const newEv = { event_id: now, event_type: 'shot', time_mode: 'dated',
-                            timestamp_start_ms: now, timestamp_end_ms: now, text: '' };
+            const newEv = { event_id: now, event_type: 'capture_start',
+                            time: { mode: 'dated', start: now / 1000, end: now / 1000,
+                                    provenance: { type: 'text', description: '' } },
+                            text: '' };
             document.getElementById('eventsList').appendChild(renderEventCard(newEv, 0));
             saveEventsToServer();
         }
@@ -1672,6 +1917,7 @@
         async function saveEventsToServer() {
             const cards = document.querySelectorAll('#eventsList .event-card');
             const events = Array.from(cards).map(card => readEventFromCard(card));
+            markCardFieldsPending();
             debounce('events', async () => {
                 if (isProcessing) return;
                 setProcessing(true);
@@ -1689,11 +1935,14 @@
                     const result = await response.json();
                     if (result.success) {
                         metadata = result.data;
+                        markCardFieldsValid();
                         updateTimeline();
                     } else {
                         if (handleApiError(null, result)) return;
+                        markCardFieldsInvalid();
                     }
                 } catch (error) {
+                    markCardFieldsInvalid();
                     alert('Failed to save event changes.');
                 } finally {
                     setProcessing(false);

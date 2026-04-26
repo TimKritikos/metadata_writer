@@ -76,29 +76,29 @@ def load_image_metadata(image_path):
         "data_spec_version": "v1.0-dev",
 
         "events" : [
-            {
-                "event_id":0,
-                "event_type": "capture_start",
-                "time_mode": "dated",
-                "timestamp_start_ms": 0,
-                "timestamp_end_ms": 0,
-                "text": ""
-            },
             #{
             #    "event_id":2,
             #    "event_type": "data_modification",
-            #    "time_mode": "dated",
-            #    "timestamp_start_ms": 0,
-            #    "timestamp_end_ms": 0,
+            #    "time": {
+            #        "mode": "dated",
+            #        "start": 0.0,
+            #        "end": 0.0,
+            #        "provenance": {"type": "text", "description": ""}
+            #    },
             #    "text": "Raw file developed"
             #},
             {
                 "event_id":1,
                 "event_type": "metadata_modification",
-                "time_mode": "dated",
-                "timestamp_start_ms": int(time.time() * 1000),
-                "timestamp_end_ms": int(time.time() * 1000),
-
+                "time": {
+                    "mode": "dated",
+                    "start": time.time(),
+                    "end": time.time(),
+                    "provenance": {
+                        "type": "template",
+                        "template": "current_time"
+                    }
+                },
                 "text": "Initial metadata written",
                 "modified_metadata_modules":[
                     "texts",
@@ -153,9 +153,23 @@ def load_image_metadata(image_path):
                 dt_str = value
                 dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
                 utc_dt = dt.replace(tzinfo=timezone.utc)
-                ts_ms = int(utc_dt.timestamp() * 1000)
-                data["events"][0]["timestamp_start_ms"] = ts_ms
-                data["events"][0]["timestamp_end_ms"] = ts_ms
+                ts = utc_dt.timestamp()
+                data["events"].insert(0, {
+                    "event_id": 0,
+                    "event_type": "capture_start",
+                    "time": {
+                        "mode": "dated",
+                        "start": ts,
+                        "end": ts,
+                        "provenance": {
+                            "type": "derived",
+                            "exif_timestamp": ts,
+                            "clock_drift_offset": 0.0,
+                            "extra_offset": 0.0
+                        }
+                    },
+                    "text": ""
+                })
             elif tag == 'GPSInfo':
                 latitude_nautical = None
                 latitude_nautical_ref = None
@@ -204,7 +218,7 @@ def try_gpx_files(data, image_path):
     capture_start_event = next((e for e in data['events'] if e.get('event_type') == 'capture_start'), None)
     if not capture_start_event:
         return
-    capture_timestamp = capture_start_event.get('timestamp_start_ms', 0) // 1000
+    capture_timestamp = capture_start_event.get('time', {}).get('start', 0.0)
 
     for file in os.listdir(gpx_search_dir):
         if file.endswith(".gpx"):
@@ -256,7 +270,7 @@ def update_metadata():
         current_data['texts'].update(updates['texts'])
 
     # Update user events
-    USER_EVENT_TYPES = {'shot', 'film_scan', 'print_scan', 'film_development', 'print'}
+    USER_EVENT_TYPES = {'capture_start', 'film_scan', 'print_scan', 'film_development', 'print'}
     if 'events' in updates:
         preserved = [e for e in current_data['events'] if e.get('event_type') not in USER_EVENT_TYPES]
         new_user_events = []
@@ -264,25 +278,46 @@ def update_metadata():
             event_type = str(ev.get('event_type', ''))
             if event_type not in USER_EVENT_TYPES:
                 continue
-            time_mode = str(ev.get('time_mode', 'dated'))
+            time_obj = ev.get('time', {})
+            time_mode = str(time_obj.get('mode', 'dated'))
             if time_mode not in ('dated', 'annual'):
                 errors['events'] = 'Invalid time mode'
                 break
             try:
-                start_ms = int(ev['timestamp_start_ms'])
-                end_ms = int(ev['timestamp_end_ms'])
+                start_s = float(time_obj['start'])
+                end_s = float(time_obj['end'])
             except (KeyError, ValueError, TypeError):
                 errors['events'] = 'Invalid timestamp'
                 break
-            if end_ms < start_ms:
+            provenance = time_obj.get('provenance', {'type': 'text', 'description': ''})
+            if provenance.get('type') == 'derived':
+                try:
+                    exif_ts = float(provenance['exif_timestamp'])
+                    drift = float(provenance.get('clock_drift_offset', 0.0))
+                    extra = float(provenance.get('extra_offset', 0.0))
+                    start_s = exif_ts + drift + extra
+                    end_s = start_s
+                    provenance = {
+                        'type': 'derived',
+                        'exif_timestamp': exif_ts,
+                        'clock_drift_offset': drift,
+                        'extra_offset': extra
+                    }
+                except (KeyError, ValueError, TypeError):
+                    errors['events'] = 'Invalid derived provenance'
+                    break
+            if end_s < start_s:
                 errors['events'] = 'End time must not be before start time'
                 break
             new_user_events.append({
                 'event_id': int(ev.get('event_id', int(time.time() * 1000))),
                 'event_type': event_type,
-                'time_mode': time_mode,
-                'timestamp_start_ms': start_ms,
-                'timestamp_end_ms': end_ms,
+                'time': {
+                    'mode': time_mode,
+                    'start': start_s,
+                    'end': end_s,
+                    'provenance': provenance
+                },
                 'text': str(ev.get('text', ''))
             })
         if 'events' not in errors:
