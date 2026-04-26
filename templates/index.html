@@ -1963,7 +1963,7 @@
                     if (result.success) {
                         metadata = result.data;
                         markCardFieldsValid();
-                        updateTimeline();
+                        updateUI();
                     } else {
                         if (handleApiError(null, result)) return;
                         markCardFieldsInvalid();
