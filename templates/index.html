@@ -544,7 +544,7 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">4</span>Save</div>
+                <div class="section-title"><span class="section-number">5</span>Save</div>
                 <div class="save-section">
                     <button class="button button-primary" onclick="saveMetadata()">Write and Exit</button>
                 </div>
@@ -572,7 +572,40 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">3</span>Geolocation Data</div>
+                <div class="section-title"><span class="section-number">3</span>Exposure</div>
+                <div class="form-group">
+                    <label class="mode-label" style="font-weight:500;color:#555;">
+                        <input type="checkbox" id="multipleExposures" onchange="updateExposureData()" style="width:auto;margin-right:6px;">
+                        Multiple Exposures
+                    </label>
+                </div>
+                <div id="exposureTriangleFields">
+                    <div class="form-group">
+                        <label>Source</label>
+                        <select id="exposureSource" onchange="updateExposureData()">
+                            <option value="source_manual">Manual</option>
+                            <option value="source_exif">EXIF</option>
+                        </select>
+                    </div>
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>ISO</label>
+                            <input type="number" id="isoInput" min="1" step="1" placeholder="e.g. 400" oninput="updateExposureData()">
+                        </div>
+                        <div class="form-group">
+                            <label>Aperture (f/)</label>
+                            <input type="text" id="apertureInput" placeholder="e.g. 2.8" oninput="updateExposureData()">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Shutter Speed</label>
+                        <input type="text" id="shutterSpeedInput" placeholder="e.g. 1/125 or 2" oninput="updateExposureData()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title"><span class="section-number">4</span>Geolocation Data</div>
                 <div id="map"></div>
                 <div class="inline-group">
                     <div class="form-group">
@@ -849,7 +882,10 @@
             
             // Events
             renderEventsWidget();
-            
+
+            // Exposure
+            updateExposureUI();
+
             // Geolocation
             document.getElementById('mapTileServer').value = metadata.geolocation_data.display_map_tile_server;
             updateMapTileLayer(metadata.geolocation_data.display_map_tile_server);
@@ -1260,6 +1296,115 @@
             });
         }
         
+        function shutterSpeedToDisplay(ss) {
+            if (ss === null || ss === undefined) return '';
+            if (typeof ss === 'object') {
+                return ss.denominator === 1 ? String(ss.numerator) : ss.numerator + '/' + ss.denominator;
+            }
+            // Fallback for bare float values
+            if (ss >= 1) return Number.isInteger(ss) ? String(ss) : ss.toFixed(2);
+            return '1/' + Math.round(1 / ss);
+        }
+
+        function updateExposureUI() {
+            const exp = metadata.exposure_data;
+            const isMultiple = exp.multiple_exposures;
+            const source = exp.source || 'source_manual';
+            const isExif = source === 'source_exif';
+            const src = isExif ? (exp.source_exif || {}) : (exp.source_manual || {});
+
+            document.getElementById('multipleExposures').checked = isMultiple;
+            document.getElementById('exposureSource').value = source;
+
+            const disableInputs = isMultiple || isExif;
+            document.getElementById('exposureTriangleFields').style.opacity = isMultiple ? '0.4' : '1';
+            document.getElementById('isoInput').disabled = disableInputs;
+            document.getElementById('apertureInput').disabled = disableInputs;
+            document.getElementById('shutterSpeedInput').disabled = disableInputs;
+
+            document.getElementById('isoInput').value = src.iso !== null && src.iso !== undefined ? src.iso : '';
+            document.getElementById('apertureInput').value = src.aperture !== null && src.aperture !== undefined ? src.aperture : '';
+            document.getElementById('shutterSpeedInput').value = shutterSpeedToDisplay(src.shutter_speed);
+        }
+
+        async function updateExposureData() {
+            const isMultiple = document.getElementById('multipleExposures').checked;
+            const source = document.getElementById('exposureSource').value;
+            const isExif = source === 'source_exif';
+            const disableInputs = isMultiple || isExif;
+
+            document.getElementById('exposureTriangleFields').style.opacity = isMultiple ? '0.4' : '1';
+            document.getElementById('isoInput').disabled = disableInputs;
+            document.getElementById('apertureInput').disabled = disableInputs;
+            document.getElementById('shutterSpeedInput').disabled = disableInputs;
+
+            // When switching to exif, immediately show cached exif values
+            if (isExif) {
+                const src = metadata.exposure_data.source_exif || {};
+                document.getElementById('isoInput').value = src.iso !== null && src.iso !== undefined ? src.iso : '';
+                document.getElementById('apertureInput').value = src.aperture !== null && src.aperture !== undefined ? src.aperture : '';
+                document.getElementById('shutterSpeedInput').value = shutterSpeedToDisplay(src.shutter_speed);
+                markFieldValid('isoInput');
+                markFieldValid('apertureInput');
+                markFieldValid('shutterSpeedInput');
+            } else {
+                markFieldPending('isoInput');
+                markFieldPending('apertureInput');
+                markFieldPending('shutterSpeedInput');
+            }
+
+            debounce('exposure', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const payload = {
+                        session_key: sessionKey,
+                        exposure_data: {
+                            multiple_exposures: document.getElementById('multipleExposures').checked,
+                            source: source,
+                        }
+                    };
+                    if (!isExif) {
+                        payload.exposure_data.source_manual = {
+                            iso: document.getElementById('isoInput').value || null,
+                            aperture: document.getElementById('apertureInput').value || null,
+                            shutter_speed: document.getElementById('shutterSpeedInput').value || null
+                        };
+                    }
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) {
+                        const result = await response.json();
+                        if (handleApiError(null, result)) return;
+                        throw new Error('Server error');
+                    }
+                    const result = await response.json();
+                    if (result.success) {
+                        metadata = result.data;
+                        markFieldValid('isoInput');
+                        markFieldValid('apertureInput');
+                        markFieldValid('shutterSpeedInput');
+                        updateExposureUI();
+                    } else {
+                        if (handleApiError(null, result)) return;
+                        if (result.errors?.iso) markFieldInvalid('isoInput'); else markFieldValid('isoInput');
+                        if (result.errors?.aperture) markFieldInvalid('apertureInput'); else markFieldValid('apertureInput');
+                        if (result.errors?.shutter_speed) markFieldInvalid('shutterSpeedInput'); else markFieldValid('shutterSpeedInput');
+                    }
+                } catch (error) {
+                    alert('Failed to connect to server. Changes not saved.');
+                    markFieldInvalid('isoInput');
+                    markFieldInvalid('apertureInput');
+                    markFieldInvalid('shutterSpeedInput');
+                } finally {
+                    setProcessing(false);
+                }
+            });
+        }
+
         async function updateGeolocation() {
             markFieldPending('manualLat');
             markFieldPending('manualLon');

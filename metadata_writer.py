@@ -45,6 +45,7 @@ import time
 import base64
 import io
 import secrets
+from fractions import Fraction
 
 app = Flask(__name__)
 
@@ -136,6 +137,21 @@ def load_image_metadata(image_path):
                 "Longitude_decimal": 100000,
             }
         },
+        "exposure_data": {
+            "multiple_exposures": False,
+            "source": "source_manual",
+            "source_exif": {
+                "have_data": False,
+                "iso": None,
+                "aperture": None,
+                "shutter_speed": None
+            },
+            "source_manual": {
+                "iso": None,
+                "aperture": None,
+                "shutter_speed": None
+            }
+        },
         "constants": {
             "image_sha512": sha512Checksum(image_path),
             "image_file_full_path": os.path.realpath(image_path)
@@ -198,6 +214,36 @@ def load_image_metadata(image_path):
                     data["geolocation_data"]["source_original_media_file"]["Latitude_decimal"] = latitude_decimal
                     data["geolocation_data"]["source_original_media_file"]["Longitude_decimal"] = longitude_decimal
                     data["geolocation_data"]["source_original_media_file"]["have_data"] = True
+            elif tag == 'ISOSpeedRatings':
+                try:
+                    iso_val = value[0] if isinstance(value, (tuple, list)) else value
+                    data["exposure_data"]["source_exif"]["iso"] = int(iso_val)
+                    data["exposure_data"]["source_exif"]["have_data"] = True
+                    data["exposure_data"]["source"] = "source_exif"
+                except (TypeError, ValueError, IndexError):
+                    pass
+            elif tag == 'FNumber':
+                try:
+                    data["exposure_data"]["source_exif"]["aperture"] = float(value)
+                    data["exposure_data"]["source_exif"]["have_data"] = True
+                    data["exposure_data"]["source"] = "source_exif"
+                except (TypeError, ValueError):
+                    pass
+            elif tag == 'ExposureTime':
+                try:
+                    if hasattr(value, 'numerator') and hasattr(value, 'denominator'):
+                        num, den = int(value.numerator), int(value.denominator)
+                    elif isinstance(value, tuple) and len(value) == 2:
+                        num, den = int(value[0]), int(value[1])
+                    else:
+                        f = Fraction(float(value)).limit_denominator(100000)
+                        num, den = f.numerator, f.denominator
+                    if num > 0 and den > 0:
+                        data["exposure_data"]["source_exif"]["shutter_speed"] = {"numerator": num, "denominator": den}
+                        data["exposure_data"]["source_exif"]["have_data"] = True
+                        data["exposure_data"]["source"] = "source_exif"
+                except (TypeError, ValueError):
+                    pass
 
     # Try to find GPX file
     try_gpx_files(data, image_path)
@@ -392,6 +438,60 @@ def update_metadata():
                     try_gpx_files(current_data, current_image_path)
                 except (ValueError, TypeError):
                     errors['gnss_device_time_offset_seconds'] = 'Must be a valid number'
+
+    # Update exposure data
+    if 'exposure_data' in updates:
+        exp = updates['exposure_data']
+        if 'multiple_exposures' in exp:
+            current_data['exposure_data']['multiple_exposures'] = bool(exp['multiple_exposures'])
+        if 'source' in exp:
+            src = str(exp['source'])
+            if src in ('source_manual', 'source_exif'):
+                current_data['exposure_data']['source'] = src
+        if 'source_manual' in exp:
+            manual = exp['source_manual']
+            if 'iso' in manual:
+                if manual['iso'] is None or str(manual['iso']).strip() == '':
+                    current_data['exposure_data']['source_manual']['iso'] = None
+                else:
+                    try:
+                        iso = int(float(str(manual['iso'])))
+                        if iso > 0:
+                            current_data['exposure_data']['source_manual']['iso'] = iso
+                        else:
+                            errors['iso'] = 'Must be a positive number'
+                    except (ValueError, TypeError):
+                        errors['iso'] = 'Must be a valid number'
+            if 'aperture' in manual:
+                if manual['aperture'] is None or str(manual['aperture']).strip() == '':
+                    current_data['exposure_data']['source_manual']['aperture'] = None
+                else:
+                    try:
+                        ap = float(str(manual['aperture']))
+                        if ap > 0:
+                            current_data['exposure_data']['source_manual']['aperture'] = ap
+                        else:
+                            errors['aperture'] = 'Must be a positive number'
+                    except (ValueError, TypeError):
+                        errors['aperture'] = 'Must be a valid number'
+            if 'shutter_speed' in manual:
+                if manual['shutter_speed'] is None or str(manual['shutter_speed']).strip() == '':
+                    current_data['exposure_data']['source_manual']['shutter_speed'] = None
+                else:
+                    val_str = str(manual['shutter_speed']).strip()
+                    try:
+                        if '/' in val_str:
+                            num_s, den_s = val_str.split('/', 1)
+                            num, den = int(float(num_s)), int(float(den_s))
+                        else:
+                            f = Fraction(val_str).limit_denominator(100000)
+                            num, den = f.numerator, f.denominator
+                        if num > 0 and den > 0:
+                            current_data['exposure_data']['source_manual']['shutter_speed'] = {"numerator": num, "denominator": den}
+                        else:
+                            errors['shutter_speed'] = 'Must be a positive number'
+                    except (ValueError, TypeError, ZeroDivisionError):
+                        errors['shutter_speed'] = 'Must be a valid number or fraction (e.g. 1/125)'
 
     if errors:
         return jsonify({"success": False, "errors": errors, "data": current_data})
