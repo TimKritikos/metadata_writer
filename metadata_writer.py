@@ -216,30 +216,36 @@ def try_gpx_files(data, image_path):
     """Search for GPX files and extract location data"""
     gpx_search_dir = os.path.dirname(image_path)
     capture_start_event = next((e for e in data['events'] if e.get('event_type') == 'capture_start'), None)
-    if not capture_start_event:
-        return
-    capture_timestamp = capture_start_event.get('time', {}).get('start', 0.0)
+    if capture_start_event:
+        capture_timestamp = capture_start_event.get('time', {}).get('start', 0.0)
 
-    for file in os.listdir(gpx_search_dir):
-        if file.endswith(".gpx"):
-            filepath = os.path.join(gpx_search_dir, file)
-            try:
-                with open(filepath, 'r') as gpx_file:
-                    gpx = gpxpy.parse(gpx_file)
-                    for track in gpx.tracks:
-                        for segment in track.segments:
-                            for point in segment.points:
-                                offset = data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]
-                                if point.time == datetime.fromtimestamp(capture_timestamp - offset, tz=timezone.utc):
-                                    data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"] = point.longitude
-                                    data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"] = point.latitude
-                                    data["geolocation_data"]["source_gnss_track_file"]["file_path"] = filepath
-                                    data["geolocation_data"]["source_gnss_track_file"]["file_sha512sum"] = sha512Checksum(filepath)
-                                    data["geolocation_data"]["source_gnss_track_file"]["file_type"] = "gpx"
-                                    data["geolocation_data"]["source_gnss_track_file"]["have_data"] = True
-                                    return
-            except:
-                continue
+        for file in os.listdir(gpx_search_dir):
+            if file.endswith(".gpx"):
+                filepath = os.path.join(gpx_search_dir, file)
+                try:
+                    with open(filepath, 'r') as gpx_file:
+                        gpx = gpxpy.parse(gpx_file)
+                        for track in gpx.tracks:
+                            for segment in track.segments:
+                                for point in segment.points:
+                                    offset = data["geolocation_data"]["source_gnss_track_file"]["gnss_device_time_offset_seconds"]
+                                    if point.time == datetime.fromtimestamp(capture_timestamp - offset, tz=timezone.utc):
+                                        data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"] = point.longitude
+                                        data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"] = point.latitude
+                                        data["geolocation_data"]["source_gnss_track_file"]["file_path"] = filepath
+                                        data["geolocation_data"]["source_gnss_track_file"]["file_sha512sum"] = sha512Checksum(filepath)
+                                        data["geolocation_data"]["source_gnss_track_file"]["file_type"] = "gpx"
+                                        data["geolocation_data"]["source_gnss_track_file"]["have_data"] = True
+                                        return
+                except:
+                    continue
+    data["geolocation_data"]["source_gnss_track_file"]["Longitude_decimal"] = 100000
+    data["geolocation_data"]["source_gnss_track_file"]["Latitude_decimal"] = 100000
+    data["geolocation_data"]["source_gnss_track_file"]["file_path"] = ""
+    data["geolocation_data"]["source_gnss_track_file"]["file_sha512sum"] = ""
+    data["geolocation_data"]["source_gnss_track_file"]["file_type"] = ""
+    data["geolocation_data"]["source_gnss_track_file"]["have_data"] = False
+    return
 
 @app.route('/')
 def index():
