@@ -1590,7 +1590,7 @@
             return frag;
         }
 
-        function buildDatedBody(ev) {
+        function buildDatedBody(ev, isRange) {
             const frag = document.createDocumentFragment();
             const provType = ev.time?.provenance?.type || 'text';
 
@@ -1644,22 +1644,39 @@
                 const utcLbl = document.createElement('span');
                 utcLbl.className = 'utc-label';
                 utcLbl.textContent = 'UTC';
-                [dateInput, timeInput].forEach(el =>
-                    el.addEventListener('change', e => onEventChange(e.target.closest('.event-card'))));
+
+                [dateInput, timeInput].forEach(el => {
+                    el.addEventListener('focus', () => markCardFieldsPending());
+                    el.addEventListener('change', e => onEventChange(e.target.closest('.event-card')));
+                });
                 row.append(lbl, dateInput, timeInput, utcLbl);
                 return row;
             };
 
-            const startRow = mkTimeRow('Start', 'start_date', 'start_time');
-            startRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.time.start * 1000);
-            startRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.time.start * 1000);
-            const endRow = mkTimeRow('End', 'end_date', 'end_time');
-            endRow.querySelector('[data-field="end_date"]').value = utcMsToDateInput(ev.time.end * 1000);
-            endRow.querySelector('[data-field="end_time"]').value = utcMsToTimeInput(ev.time.end * 1000);
-            const hint = document.createElement('div');
-            hint.className = 'event-hint';
-            hint.textContent = 'Set start = end for a point-in-time event';
-            frag.append(startRow, endRow, hint);
+            const rangeMode = isRange !== undefined ? isRange : ev.time.start !== ev.time.end;
+            if (rangeMode) {
+                const startRow = mkTimeRow('Start', 'start_date', 'start_time');
+                startRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.time.start * 1000);
+                startRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.time.start * 1000);
+                const endRow = mkTimeRow('End', 'end_date', 'end_time');
+                endRow.querySelector('[data-field="end_date"]').value = utcMsToDateInput(ev.time.end * 1000);
+                endRow.querySelector('[data-field="end_time"]').value = utcMsToTimeInput(ev.time.end * 1000);
+                frag.append(startRow, endRow);
+            } else {
+                const timeRow = mkTimeRow('Time', 'start_date', 'start_time');
+                timeRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.time.start * 1000);
+                timeRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.time.start * 1000);
+                frag.appendChild(timeRow);
+            }
+            const toggleDiv = document.createElement('div');
+            toggleDiv.style.cssText = 'text-align:right;padding:2px 4px 3px;';
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.style.cssText = 'font-size:11px;color:#555;background:#f0f0f0;border:1px solid #ccc;border-radius:3px;cursor:pointer;padding:2px 7px;';
+            toggleBtn.textContent = rangeMode ? '\u00d7 Point in time' : '+ Set range';
+            toggleBtn.onclick = e => rebuildWithRangeMode(e.target.closest('.event-card'), !rangeMode);
+            toggleDiv.appendChild(toggleBtn);
+            frag.appendChild(toggleDiv);
 
             // ── Provenance extra field ────────────────────────────────
             if (provType === 'text') {
@@ -1767,6 +1784,16 @@
 
             frag.append(startRow, endRow, hint, buildNoteRow(ev));
             return frag;
+        }
+
+        function rebuildWithRangeMode(card, isRange) {
+            const current = readEventFromCard(card);
+            // If collapsing to single, snap end to match start so the hidden
+            // field is in sync — the next real edit will persist this to the server
+            if (!isRange) current.time.end = current.time.start;
+            const body = card.querySelector('.event-card-body');
+            body.innerHTML = '';
+            body.appendChild(buildDatedBody(current, isRange));
         }
 
         function onEventModeChange(card) {
