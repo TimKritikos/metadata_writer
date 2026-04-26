@@ -371,6 +371,124 @@
             font-weight: 500;
         }
 
+        /* Event widget */
+        .event-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .event-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            flex-wrap: wrap;
+        }
+
+        .event-type-select {
+            flex: 1;
+            min-width: 0;
+            font-weight: 500;
+        }
+
+        .mode-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: #555;
+            cursor: pointer;
+            font-weight: normal;
+            white-space: nowrap;
+        }
+
+        .remove-event-btn {
+            margin-left: auto;
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px 8px;
+            font-size: 16px;
+            color: #999;
+            line-height: 1.2;
+            flex-shrink: 0;
+        }
+
+        .remove-event-btn:hover {
+            background: #fee;
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        .event-card-body { padding: 12px; }
+
+        .event-time-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .event-time-label {
+            font-size: 12px;
+            color: #888;
+            width: 36px;
+            flex-shrink: 0;
+        }
+
+        .event-date-input  { flex: 1.2; min-width: 0; }
+        .event-time-input  { flex: 1;   min-width: 0; }
+        .event-month-select { flex: 1.5; min-width: 0; }
+        .event-day-input   { width: 60px; flex-shrink: 0; }
+
+        .utc-label {
+            font-size: 11px;
+            color: #aaa;
+            flex-shrink: 0;
+        }
+
+        .event-hint {
+            font-size: 12px;
+            color: #aaa;
+            font-style: italic;
+            margin-top: 2px;
+        }
+
+        .add-event-btn {
+            width: 100%;
+            padding: 8px;
+            background: none;
+            border: 1px dashed #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #888;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .add-event-btn:hover {
+            border-color: #007bff;
+            color: #007bff;
+            background: #f0f7ff;
+        }
+
+        .annual-event-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #fff3e0;
+            border: 1px solid #fd7e14;
+            border-radius: 4px;
+            padding: 3px 8px;
+            margin: 3px;
+            font-size: 12px;
+        }
+
     </style>
 </head>
 <body>
@@ -446,34 +564,9 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">2</span>Capture Timestamp</div>
-                <div class="inline-group">
-                    <div class="form-group">
-                        <label>Original Capture Start Date</label>
-                        <input type="text" id="captureStart" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>Capture Duration (seconds)</label>
-                        <input type="text" id="captureDuration" oninput="updateCaptureTimestamp()">
-                    </div>
-                </div>
-                <div class="inline-group">
-                    <div class="form-group">
-                        <label>Capture Start Offset (seconds)</label>
-                        <input type="text" id="captureOffset" oninput="updateCaptureTimestamp()">
-                    </div>
-                    <div class="form-group">
-                        <label>Capture Start Accuracy (±seconds)</label>
-                        <input type="text" id="captureAccuracy" oninput="updateCaptureTimestamp()">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="singleCapture" onchange="updateCaptureTimestamp()">
-                        Final picture is comprised of one capture
-                    </label>
-                </div>
-                <div id="captureExplanation" class="explanation"></div>
+                <div class="section-title"><span class="section-number">2</span>Events</div>
+                <div id="eventsList"></div>
+                <button class="add-event-btn" onclick="addEvent()">+ Add Event</button>
             </div>
             
             <div class="section">
@@ -726,14 +819,8 @@
             document.getElementById('title').value = metadata.texts.title;
             document.getElementById('description').value = metadata.texts.description;
             
-            // Capture timestamp
-            const captureDate = new Date(metadata.capture_timestamp.capture_start_on_original_metadata_timestamp * 1000);
-            document.getElementById('captureStart').value = captureDate.toISOString().slice(0, 19).replace('T', ' ');
-            document.getElementById('captureDuration').value = metadata.capture_timestamp.capture_duration_seconds;
-            document.getElementById('captureOffset').value = metadata.capture_timestamp.capture_start_time_offset_seconds;
-            document.getElementById('captureAccuracy').value = metadata.events[0].timestamp_accuracy_seconds;
-            document.getElementById('singleCapture').checked = metadata.capture_timestamp.single_capture_picture;
-            updateCaptureExplanation();
+            // Events
+            renderEventsWidget();
             
             // Geolocation
             document.getElementById('mapTileServer').value = metadata.geolocation_data.display_map_tile_server;
@@ -771,30 +858,6 @@
             updateTimeline();
         }
         
-        function updateCaptureExplanation() {
-            const offset = parseFloat(document.getElementById('captureOffset').value) || 0;
-            const duration = parseFloat(document.getElementById('captureDuration').value) || 0;
-            const accuracy = parseFloat(document.getElementById('captureAccuracy').value) || 0;
-            const single = document.getElementById('singleCapture').checked;
-            
-            const timestamp = metadata.capture_timestamp.capture_start_on_original_metadata_timestamp + offset;
-            const date = new Date(timestamp * 1000);
-            const dateStr = date.toUTCString();
-            
-            const accStr = accuracy !== 0 ? ` plus/minus ${accuracy} seconds` : '';
-            
-            let explanation;
-            if (single) {
-                explanation = `An image taken at ${dateStr}${accStr} with a ${duration} second shutter speed`;
-            } else {
-                explanation = `A multi-picture image (focus stack/exposure stack/etc) that started being taken at ${dateStr}${accStr} and took ${duration} seconds to capture`;
-            }
-            
-            const el = document.getElementById('captureExplanation');
-            el.textContent = explanation;
-            el.className = 'explanation valid';
-        }
-        
         function updateMap() {
             const source = metadata.geolocation_data.valid_data_source;
             const sourceData = metadata.geolocation_data[source];
@@ -817,12 +880,12 @@
         }
         
         function formatTimeLabel(date, tSpan) {
-            if (tSpan < 3600) {
+            if (tSpan < 3600000) {
                 return date.toLocaleTimeString();
-            } else if (tSpan < 86400) {
+            } else if (tSpan < 86400000) {
                 return date.getHours().toString().padStart(2, '0') + ':' +
                        date.getMinutes().toString().padStart(2, '0');
-            } else if (tSpan < 86400 * 60) {
+            } else if (tSpan < 86400000 * 60) {
                 return date.toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) +
                        ' ' + date.getHours().toString().padStart(2, '0') + ':' +
                        date.getMinutes().toString().padStart(2, '0');
@@ -840,7 +903,16 @@
                 return;
             }
 
-            const sorted = [...metadata.events].sort((a, b) => a.timestamp - b.timestamp);
+            // Separate dated and annual events
+            const datedEvents = metadata.events.filter(e => e.time_mode !== 'annual' && e.timestamp_start_ms != null);
+            const annualEvents = metadata.events.filter(e => e.time_mode === 'annual');
+
+            if (datedEvents.length === 0 && annualEvents.length === 0) {
+                container.innerHTML = '<p style="color:#888;padding:20px">No events to display</p>';
+                return;
+            }
+
+            const sorted = [...datedEvents].sort((a, b) => a.timestamp_start_ms - b.timestamp_start_ms);
 
             // Layout constants
             const W = container.clientWidth || 900;
@@ -848,43 +920,54 @@
             const drawW = W - 2 * padX;
             const rowH = 40;
             const rowGap = 4;
-            const minLeader = 18; // min px between axis and bottom of closest label row
-            const axisTickH = 45; // space below axis for tick labels
+            const minLeader = 18;
+            const axisTickH = 45;
             const dotR = 6;
             const MAX_LABEL = 30;
 
+            // Event type colours
+            const TYPE_COLOR = {
+                shot: '#007bff', film_scan: '#28a745', print_scan: '#6f42c1',
+                film_development: '#fd7e14', print: '#dc3545',
+                metadata_modification: '#6c757d'
+            };
+            const evColor = type => TYPE_COLOR[type] || '#555';
+
+            const labelText = e => (e.text || e.event_type || 'Event').substring(0, MAX_LABEL);
+            const fmtTime = d =>
+                d.getUTCFullYear() + '-' +
+                String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getUTCDate()).padStart(2, '0') + ' ' +
+                String(d.getUTCHours()).padStart(2, '0') + ':' +
+                String(d.getUTCMinutes()).padStart(2, '0') + ':' +
+                String(d.getUTCSeconds()).padStart(2, '0');
+            const labelW = (lbl, ts) => Math.min(220, Math.max(60, Math.max(lbl.length, ts.length) * 7 + 20));
+
+            if (sorted.length === 0) {
+                // No dated events — skip SVG, only show annual below
+            } else {
             // Time range — add 10% padding on each side so edge events aren't flush
-            const t0 = sorted[0].timestamp;
-            const t1 = sorted[sorted.length - 1].timestamp;
-            const tSpan = Math.max(t1 - t0, 1);
+            const t0 = sorted[0].timestamp_start_ms;
+            const t1 = sorted[sorted.length - 1].timestamp_start_ms;
+            const tSpan = Math.max(t1 - t0, 1000);
             const tPad = tSpan * 0.10;
             const tDrawStart = t0 - tPad;
             const tDrawEnd   = t1 + tPad;
             const tDrawSpan  = tDrawEnd - tDrawStart;
             const xOf = ts => padX + ((ts - tDrawStart) / tDrawSpan) * drawW;
 
-            const labelText = e => (e.text || e.event_type || 'Event').substring(0, MAX_LABEL);
-            const fmtTime = d =>
-                d.getFullYear() + '-' +
-                String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                String(d.getDate()).padStart(2, '0') + ' ' +
-                String(d.getHours()).padStart(2, '0') + ':' +
-                String(d.getMinutes()).padStart(2, '0') + ':' +
-                String(d.getSeconds()).padStart(2, '0');
-            // Estimate rendered label width — wide enough for both lines
-            const labelW = (lbl, ts) => Math.min(220, Math.max(60, Math.max(lbl.length, ts.length) * 7 + 20));
-
             // Build event objects
             const evs = sorted.map(e => {
-                const time = new Date(e.timestamp * 1000);
+                const time = new Date(e.timestamp_start_ms);
                 const label = labelText(e);
                 const ts = fmtTime(time);
+                const rangeMs = e.timestamp_end_ms - e.timestamp_start_ms;
                 return {
-                    x: xOf(e.timestamp),
-                    label,
-                    ts,
+                    x: xOf(e.timestamp_start_ms),
+                    label, ts,
                     type: e.event_type,
-                    accuracy: e.timestamp_accuracy_seconds || 0,
+                    color: evColor(e.event_type),
+                    rangeMs,
                     time
                 };
             });
@@ -932,14 +1015,14 @@
                 return e;
             };
 
-            // ── Accuracy bands (behind everything) ───────────────────────────
+            // ── Range bands (behind everything) ───────────────────────────────
             evs.forEach(ev => {
-                if (ev.accuracy > 0) {
-                    const bw = Math.max(4, (ev.accuracy * 2 / tDrawSpan) * drawW);
+                if (ev.rangeMs > 0) {
+                    const bw = Math.max(4, (ev.rangeMs / tDrawSpan) * drawW);
                     mk('rect', {
-                        x: ev.x - bw / 2, y: axisY - 5,
+                        x: ev.x, y: axisY - 5,
                         width: bw, height: 10,
-                        rx: 2, fill: 'rgba(0,123,255,0.15)'
+                        rx: 2, fill: ev.color, opacity: '0.3'
                     });
                 }
             });
@@ -959,7 +1042,7 @@
                 const frac = i / tickCount;
                 const tx = padX + frac * drawW;
                 const ts = tDrawStart + frac * tDrawSpan;
-                const date = new Date(ts * 1000);
+                const date = new Date(ts);
                 mk('line', { x1: tx, y1: axisY, x2: tx, y2: axisY + 8,
                              stroke: '#999', 'stroke-width': 1 });
                 const txt = mk('text', {
@@ -989,7 +1072,7 @@
                 // Dot on axis
                 const dot = mk('circle', {
                     cx: ev.x, cy: axisY, r: dotR,
-                    fill: '#007bff', stroke: 'white', 'stroke-width': 2
+                    fill: ev.color, stroke: 'white', 'stroke-width': 2
                 });
                 dot.style.cursor = 'pointer';
                 const tip = document.createElementNS(NS, 'title');
@@ -997,12 +1080,12 @@
                     ev.label,
                     ev.ts,
                     `Type: ${ev.type}`,
-                    ev.accuracy ? `Accuracy: ±${ev.accuracy}s` : ''
+                    ev.rangeMs > 0 ? `Duration: ${Math.round(ev.rangeMs / 1000)}s` : ''
                 ].filter(Boolean).join('\n');
                 dot.appendChild(tip);
 
                 // Label pill — two lines: event name + timestamp
-                mk('rect', { x: lx, y: ly, width: lw, height: rowH, rx: 4, fill: '#007bff' });
+                mk('rect', { x: lx, y: ly, width: lw, height: rowH, rx: 4, fill: ev.color });
 
                 const ltxt = mk('text', {
                     x: lx + lw / 2, y: ly + 15,
@@ -1024,6 +1107,30 @@
             });
 
             container.appendChild(svg);
+            } // end else (sorted.length > 0)
+
+            // ── Annual events ─────────────────────────────────────────────────
+            if (annualEvents.length > 0) {
+                const annualDiv = document.createElement('div');
+                annualDiv.style.cssText = 'padding:8px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
+                const heading = document.createElement('span');
+                heading.style.cssText = 'font-size:11px;color:#888;margin-right:4px;';
+                heading.textContent = 'Annual events:';
+                annualDiv.appendChild(heading);
+                annualEvents.forEach(e => {
+                    const d = new Date(e.timestamp_start_ms);
+                    const chip = document.createElement('span');
+                    chip.className = 'annual-event-chip';
+                    chip.style.cssText = `background:${evColor(e.event_type)};color:white;border:none;`;
+                    chip.textContent = (e.text || e.event_type) + ' \u2014 ' +
+                        (d.getUTCMonth() + 1).toString().padStart(2, '0') + '/' +
+                        d.getUTCDate().toString().padStart(2, '0') + ' ' +
+                        d.getUTCHours().toString().padStart(2, '0') + ':' +
+                        d.getUTCMinutes().toString().padStart(2, '0');
+                    annualDiv.appendChild(chip);
+                });
+                container.appendChild(annualDiv);
+            }
         }
         
         async function updateTexts() {
@@ -1068,76 +1175,6 @@
                     alert('Failed to connect to server. Changes not saved.');
                     markFieldInvalid('title');
                     markFieldInvalid('description');
-                } finally {
-                    setProcessing(false);
-                }
-            });
-        }
-        
-        async function updateCaptureTimestamp() {
-            updateCaptureExplanation();
-            markFieldPending('captureOffset');
-            markFieldPending('captureDuration');
-            markFieldPending('captureAccuracy');
-            
-            debounce('capture', async () => {
-                if (isProcessing) return;
-                setProcessing(true);
-                try {
-                    const response = await fetch('/api/metadata', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            session_key: sessionKey,
-                            capture_timestamp: {
-                                capture_start_time_offset_seconds: document.getElementById('captureOffset').value,
-                                capture_duration_seconds: document.getElementById('captureDuration').value,
-                                single_capture_picture: document.getElementById('singleCapture').checked
-                            },
-                            events: [{
-                                timestamp_accuracy_seconds: document.getElementById('captureAccuracy').value
-                            }]
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        const result = await response.json();
-                        if (handleApiError(null, result)) return;
-                        throw new Error('Server error');
-                    }
-                    
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        metadata = result.data;
-                        markFieldValid('captureOffset');
-                        markFieldValid('captureDuration');
-                        markFieldValid('captureAccuracy');
-                        updateUI();
-                    } else {
-                        if (handleApiError(null, result)) return;
-                        // Keep user input, mark invalid fields
-                        if (result.errors && result.errors.capture_start_time_offset_seconds) {
-                            markFieldInvalid('captureOffset');
-                        } else {
-                            markFieldValid('captureOffset');
-                        }
-                        if (result.errors && result.errors.capture_duration_seconds) {
-                            markFieldInvalid('captureDuration');
-                        } else {
-                            markFieldValid('captureDuration');
-                        }
-                        if (result.errors && result.errors.timestamp_accuracy_seconds) {
-                            markFieldInvalid('captureAccuracy');
-                        } else {
-                            markFieldValid('captureAccuracy');
-                        }
-                    }
-                } catch (error) {
-                    alert('Failed to connect to server. Changes not saved.');
-                    markFieldInvalid('captureOffset');
-                    markFieldInvalid('captureDuration');
-                    markFieldInvalid('captureAccuracy');
                 } finally {
                     setProcessing(false);
                 }
@@ -1347,6 +1384,320 @@
                 if (!el) return;
                 el.classList.toggle('active', id === activeId);
                 el.classList.toggle('inactive', id !== activeId);
+            });
+        }
+
+        // ── Event Widget ──────────────────────────────────────────────────────
+        const EVENT_TYPES = [
+            { value: 'shot',             label: 'Shot Time' },
+            { value: 'film_scan',        label: 'Film Scan Time' },
+            { value: 'print_scan',       label: 'Print Scan Time' },
+            { value: 'film_development', label: 'Film Development Time' },
+            { value: 'raw_file_development', label: 'Raw File Development Time' },
+            { value: 'print',            label: 'Print Time' }
+        ];
+        const USER_EVENT_TYPES = new Set(EVENT_TYPES.map(e => e.value));
+        const MONTHS = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+
+        function utcMsToDateInput(ms) {
+            const d = new Date(ms);
+            return d.getUTCFullYear() + '-' +
+                String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getUTCDate()).padStart(2, '0');
+        }
+
+        function utcMsToTimeInput(ms) {
+            const d = new Date(ms);
+            return String(d.getUTCHours()).padStart(2, '0') + ':' +
+                String(d.getUTCMinutes()).padStart(2, '0') + ':' +
+                String(d.getUTCSeconds()).padStart(2, '0');
+        }
+
+        function dateTimeToUtcMs(dateStr, timeStr) {
+            return Date.parse(dateStr + 'T' + (timeStr || '00:00:00') + 'Z');
+        }
+
+        function msToAnnual(ms) {
+            const d = new Date(ms);
+            return {
+                month: d.getUTCMonth() + 1,
+                day: d.getUTCDate(),
+                time: String(d.getUTCHours()).padStart(2,'0') + ':' +
+                      String(d.getUTCMinutes()).padStart(2,'0') + ':' +
+                      String(d.getUTCSeconds()).padStart(2,'0')
+            };
+        }
+
+        function annualToMs(month, day, timeStr) {
+            const m = String(month).padStart(2,'0');
+            const dd = String(day).padStart(2,'0');
+            return Date.parse('1970-' + m + '-' + dd + 'T' + (timeStr || '00:00:00') + 'Z');
+        }
+
+        function renderEventsWidget() {
+            const container = document.getElementById('eventsList');
+            container.innerHTML = '';
+            const userEvents = (metadata.events || []).filter(e => USER_EVENT_TYPES.has(e.event_type));
+            userEvents.forEach((ev, idx) => container.appendChild(renderEventCard(ev, idx)));
+        }
+
+        function renderEventCard(ev, idx) {
+            const card = document.createElement('div');
+            card.className = 'event-card';
+            card.dataset.eventId = ev.event_id;
+
+            const header = document.createElement('div');
+            header.className = 'event-card-header';
+
+            const typeSelect = document.createElement('select');
+            typeSelect.className = 'event-type-select';
+            EVENT_TYPES.forEach(et => {
+                const opt = document.createElement('option');
+                opt.value = et.value;
+                opt.textContent = et.label;
+                if (et.value === ev.event_type) opt.selected = true;
+                typeSelect.appendChild(opt);
+            });
+            typeSelect.onchange = () => onEventChange(card);
+
+            const modeLabel = document.createElement('label');
+            modeLabel.className = 'mode-label';
+            const modeCheck = document.createElement('input');
+            modeCheck.type = 'checkbox';
+            modeCheck.checked = ev.time_mode === 'annual';
+            modeCheck.onchange = () => onEventModeChange(card);
+            modeLabel.appendChild(modeCheck);
+            modeLabel.appendChild(document.createTextNode(' Annual'));
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-event-btn';
+            removeBtn.textContent = '\u00d7';
+            removeBtn.title = 'Remove event';
+            removeBtn.onclick = () => removeEvent(card);
+
+            header.append(typeSelect, modeLabel, removeBtn);
+
+            const body = document.createElement('div');
+            body.className = 'event-card-body';
+            body.appendChild(ev.time_mode === 'annual' ? buildAnnualBody(ev) : buildDatedBody(ev));
+
+            card.append(header, body);
+            return card;
+        }
+
+        function buildDatedBody(ev) {
+            const frag = document.createDocumentFragment();
+
+            const mkTimeRow = (labelText, dateField, timeField) => {
+                const row = document.createElement('div');
+                row.className = 'event-time-row';
+                const lbl = document.createElement('span');
+                lbl.className = 'event-time-label';
+                lbl.textContent = labelText;
+                const dateInput = document.createElement('input');
+                dateInput.type = 'date';
+                dateInput.className = 'event-date-input';
+                dateInput.dataset.field = dateField;
+                const timeInput = document.createElement('input');
+                timeInput.type = 'time';
+                timeInput.className = 'event-time-input';
+                timeInput.dataset.field = timeField;
+                timeInput.step = 1;
+                const utcLbl = document.createElement('span');
+                utcLbl.className = 'utc-label';
+                utcLbl.textContent = 'UTC';
+                [dateInput, timeInput].forEach(el =>
+                    el.addEventListener('change', e => onEventChange(e.target.closest('.event-card'))));
+                row.append(lbl, dateInput, timeInput, utcLbl);
+                return row;
+            };
+
+            const startRow = mkTimeRow('Start', 'start_date', 'start_time');
+            startRow.querySelector('[data-field="start_date"]').value = utcMsToDateInput(ev.timestamp_start_ms);
+            startRow.querySelector('[data-field="start_time"]').value = utcMsToTimeInput(ev.timestamp_start_ms);
+
+            const endRow = mkTimeRow('End', 'end_date', 'end_time');
+            endRow.querySelector('[data-field="end_date"]').value = utcMsToDateInput(ev.timestamp_end_ms);
+            endRow.querySelector('[data-field="end_time"]').value = utcMsToTimeInput(ev.timestamp_end_ms);
+
+            const hint = document.createElement('div');
+            hint.className = 'event-hint';
+            hint.textContent = 'Set start = end for a point-in-time event';
+
+            const textRow = document.createElement('div');
+            textRow.className = 'event-time-row';
+            const textLbl = document.createElement('span');
+            textLbl.className = 'event-time-label';
+            textLbl.textContent = 'Note';
+            const textInput = document.createElement('input');
+            textInput.type = 'text';
+            textInput.dataset.field = 'text';
+            textInput.style.flex = '1';
+            textInput.placeholder = 'Optional note';
+            textInput.value = ev.text || '';
+            textInput.oninput = e => onEventChange(e.target.closest('.event-card'));
+            textRow.append(textLbl, textInput);
+
+            frag.append(startRow, endRow, hint, textRow);
+            return frag;
+        }
+
+        function buildAnnualBody(ev) {
+            const frag = document.createDocumentFragment();
+
+            const mkAnnualRow = (labelText, monthField, dayField, timeField, msVal) => {
+                const a = msToAnnual(msVal || 0);
+                const row = document.createElement('div');
+                row.className = 'event-time-row';
+                const lbl = document.createElement('span');
+                lbl.className = 'event-time-label';
+                lbl.textContent = labelText;
+
+                const monthSel = document.createElement('select');
+                monthSel.className = 'event-month-select';
+                monthSel.dataset.field = monthField;
+                MONTHS.forEach((m, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = i + 1;
+                    opt.textContent = m;
+                    if (i + 1 === a.month) opt.selected = true;
+                    monthSel.appendChild(opt);
+                });
+                monthSel.onchange = e => onEventChange(e.target.closest('.event-card'));
+
+                const dayInput = document.createElement('input');
+                dayInput.type = 'number';
+                dayInput.min = 1; dayInput.max = 31;
+                dayInput.className = 'event-day-input';
+                dayInput.dataset.field = dayField;
+                dayInput.value = a.day;
+                dayInput.oninput = e => onEventChange(e.target.closest('.event-card'));
+
+                const timeInput = document.createElement('input');
+                timeInput.type = 'time';
+                timeInput.className = 'event-time-input';
+                timeInput.dataset.field = timeField;
+                timeInput.step = 1;
+                timeInput.value = a.time;
+                timeInput.onchange = e => onEventChange(e.target.closest('.event-card'));
+
+                row.append(lbl, monthSel, dayInput, timeInput);
+                return row;
+            };
+
+            const startRow = mkAnnualRow('From', 'start_month', 'start_day', 'start_time_annual', ev.timestamp_start_ms);
+            const endRow   = mkAnnualRow('To',   'end_month',   'end_day',   'end_time_annual',   ev.timestamp_end_ms || ev.timestamp_start_ms);
+
+            const hint = document.createElement('div');
+            hint.className = 'event-hint';
+            hint.textContent = 'Year unknown \u2014 stored as 1970 timestamps';
+
+            const textRow = document.createElement('div');
+            textRow.className = 'event-time-row';
+            const textLbl = document.createElement('span');
+            textLbl.className = 'event-time-label';
+            textLbl.textContent = 'Note';
+            const textInput = document.createElement('input');
+            textInput.type = 'text';
+            textInput.dataset.field = 'text';
+            textInput.style.flex = '1';
+            textInput.placeholder = 'Optional note';
+            textInput.value = ev.text || '';
+            textInput.oninput = e => onEventChange(e.target.closest('.event-card'));
+            textRow.append(textLbl, textInput);
+
+            frag.append(startRow, endRow, hint, textRow);
+            return frag;
+        }
+
+        function onEventModeChange(card) {
+            const isAnnual = card.querySelector('input[type="checkbox"]').checked;
+            const current = readEventFromCard(card);
+            const body = card.querySelector('.event-card-body');
+            body.innerHTML = '';
+            body.appendChild(isAnnual ? buildAnnualBody(current) : buildDatedBody(current));
+            onEventChange(card);
+        }
+
+        function readEventFromCard(card) {
+            const isAnnual = card.querySelector('input[type="checkbox"]').checked;
+            const typeSelect = card.querySelector('.event-type-select');
+            const text = (card.querySelector('[data-field="text"]') || {}).value || '';
+            let startMs, endMs;
+            if (isAnnual) {
+                startMs = annualToMs(
+                    card.querySelector('[data-field="start_month"]').value,
+                    card.querySelector('[data-field="start_day"]').value,
+                    card.querySelector('[data-field="start_time_annual"]').value);
+                endMs = annualToMs(
+                    card.querySelector('[data-field="end_month"]').value,
+                    card.querySelector('[data-field="end_day"]').value,
+                    card.querySelector('[data-field="end_time_annual"]').value);
+            } else {
+                startMs = dateTimeToUtcMs(
+                    card.querySelector('[data-field="start_date"]').value,
+                    card.querySelector('[data-field="start_time"]').value);
+                endMs = dateTimeToUtcMs(
+                    card.querySelector('[data-field="end_date"]').value,
+                    card.querySelector('[data-field="end_time"]').value);
+            }
+            return {
+                event_id: parseInt(card.dataset.eventId) || Date.now(),
+                event_type: typeSelect.value,
+                time_mode: isAnnual ? 'annual' : 'dated',
+                timestamp_start_ms: isNaN(startMs) ? 0 : startMs,
+                timestamp_end_ms: isNaN(endMs) ? (isNaN(startMs) ? 0 : startMs) : endMs,
+                text
+            };
+        }
+
+        function onEventChange(card) {
+            saveEventsToServer();
+        }
+
+        function addEvent() {
+            const now = Date.now();
+            const newEv = { event_id: now, event_type: 'shot', time_mode: 'dated',
+                            timestamp_start_ms: now, timestamp_end_ms: now, text: '' };
+            document.getElementById('eventsList').appendChild(renderEventCard(newEv, 0));
+            saveEventsToServer();
+        }
+
+        function removeEvent(card) {
+            card.remove();
+            saveEventsToServer();
+        }
+
+        async function saveEventsToServer() {
+            const cards = document.querySelectorAll('#eventsList .event-card');
+            const events = Array.from(cards).map(card => readEventFromCard(card));
+            debounce('events', async () => {
+                if (isProcessing) return;
+                setProcessing(true);
+                try {
+                    const response = await fetch('/api/metadata', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ session_key: sessionKey, events })
+                    });
+                    if (!response.ok) {
+                        const result = await response.json();
+                        if (handleApiError(null, result)) return;
+                        throw new Error('Server error');
+                    }
+                    const result = await response.json();
+                    if (result.success) {
+                        metadata = result.data;
+                        updateTimeline();
+                    } else {
+                        if (handleApiError(null, result)) return;
+                    }
+                } catch (error) {
+                    alert('Failed to save event changes.');
+                } finally {
+                    setProcessing(false);
+                }
             });
         }
 

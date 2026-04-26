@@ -39,7 +39,6 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
-from fractions import Fraction
 import gpxpy
 import gpxpy.gpx
 import time
@@ -76,44 +75,42 @@ def load_image_metadata(image_path):
         "program_version": "v1.0-dev",
         "data_spec_version": "v1.0-dev",
 
-        "events" : [{
-                        "event_id":0,
-                        "event_type": "capture_start",
-                        "timestamp": 0,
-                        "timestamp_accuracy_seconds": 0,
+        "events" : [
+            {
+                "event_id":0,
+                "event_type": "capture_start",
+                "time_mode": "dated",
+                "timestamp_start_ms": 0,
+                "timestamp_end_ms": 0,
+                "text": ""
+            },
+            #{
+            #   "event_id":2,
+            #   "event_type": "data_modification",
+            #   "time_mode": "dated",
+            #   "timestamp_start_ms": 0,
+            #   "timestamp_end_ms": 0,
+            #   "text": "Raw file developed"
+            #},
+            {
+                "event_id":1,
+                "event_type": "metadata_modification",
+                "time_mode": "dated",
+                "timestamp_start_ms": int(time.time() * 1000),
+                "timestamp_end_ms": int(time.time() * 1000),
 
-                        "text": ""
-                    },
-                    #{
-                    #   "event_id":2,
-                    #   "event_type": "data_modification",
-                    #   "timestamp": 1741745288,
-                    #   "text": "Raw file developed"
-                    #},
-                    {
-                        "event_id":1,
-                        "event_type": "metadata_modification",
-                        "timestamp": int(time.time()),
-                        "timestamp_accuracy_seconds": 0,
-
-                        "text": "Initial metadata written",
-                        "modified_metadata_modules":[
-                                "texts",
-                                "capture_timestamp",
-                                "constants",
-                                "geolocation_data"
-                            ]
-                    },
-                    ],
+                "text": "Initial metadata written",
+                "modified_metadata_modules":[
+                        "texts",
+                        "capture_timestamp",
+                        "constants",
+                        "geolocation_data"
+                ]
+            }
+        ],
         "texts": {
             "title" : "",
             "description" : "",
-        },
-        "capture_timestamp": {
-            "capture_start_on_original_metadata_timestamp": -1,
-            "capture_duration_seconds": -1,
-            "single_capture_picture": True,
-            "capture_start_time_offset_seconds": 0,
         },
         "geolocation_data" : {
             "have_data": False,
@@ -152,14 +149,13 @@ def load_image_metadata(image_path):
     if exif_data:
         for tag_id, value in exif_data.items():
             tag = TAGS.get(tag_id, tag_id)
-            if tag == 'ExposureTime':
-                data["capture_timestamp"]["capture_duration_seconds"] = float(Fraction(value))
-            elif tag == 'DateTimeOriginal':
+            if tag == 'DateTimeOriginal':
                 dt_str = value
                 dt = datetime.strptime(dt_str, '%Y:%m:%d %H:%M:%S')
                 utc_dt = dt.replace(tzinfo=timezone.utc)
-                data["capture_timestamp"]["capture_start_on_original_metadata_timestamp"] = int(utc_dt.timestamp())
-                data["events"][0]["timestamp"] = int(utc_dt.timestamp())
+                ts_ms = int(utc_dt.timestamp() * 1000)
+                data["events"][0]["timestamp_start_ms"] = ts_ms
+                data["events"][0]["timestamp_end_ms"] = ts_ms
             elif tag == 'GPSInfo':
                 latitude_nautical = None
                 latitude_nautical_ref = None
@@ -205,7 +201,10 @@ def load_image_metadata(image_path):
 def try_gpx_files(data, image_path):
     """Search for GPX files and extract location data"""
     gpx_search_dir = os.path.dirname(image_path)
-    capture_timestamp = data["events"][0]["timestamp"]
+    capture_start_event = next((e for e in data['events'] if e.get('event_type') == 'capture_start'), None)
+    if not capture_start_event:
+        return
+    capture_timestamp = capture_start_event.get('timestamp_start_ms', 0) // 1000
 
     for file in os.listdir(gpx_search_dir):
         if file.endswith(".gpx"):
@@ -256,43 +255,39 @@ def update_metadata():
     if 'texts' in updates:
         current_data['texts'].update(updates['texts'])
 
-    # Update capture timestamp
-    if 'capture_timestamp' in updates:
-        # Validate numeric fields
-        if 'capture_start_time_offset_seconds' in updates['capture_timestamp']:
+    # Update user events
+    USER_EVENT_TYPES = {'shot', 'film_scan', 'print_scan', 'film_development', 'print'}
+    if 'events' in updates:
+        preserved = [e for e in current_data['events'] if e.get('event_type') not in USER_EVENT_TYPES]
+        new_user_events = []
+        for ev in updates['events']:
+            event_type = str(ev.get('event_type', ''))
+            if event_type not in USER_EVENT_TYPES:
+                continue
+            time_mode = str(ev.get('time_mode', 'dated'))
+            if time_mode not in ('dated', 'annual'):
+                errors['events'] = 'Invalid time mode'
+                break
             try:
-                offset = float(updates['capture_timestamp']['capture_start_time_offset_seconds'])
-                current_data['capture_timestamp']['capture_start_time_offset_seconds'] = offset
-            except (ValueError, TypeError):
-                errors['capture_start_time_offset_seconds'] = 'Must be a valid number'
-        
-        if 'capture_duration_seconds' in updates['capture_timestamp']:
-            try:
-                duration = float(updates['capture_timestamp']['capture_duration_seconds'])
-                current_data['capture_timestamp']['capture_duration_seconds'] = duration
-            except (ValueError, TypeError):
-                errors['capture_duration_seconds'] = 'Must be a valid number'
-        
-        if 'single_capture_picture' in updates['capture_timestamp']:
-            current_data['capture_timestamp']['single_capture_picture'] = updates['capture_timestamp']['single_capture_picture']
-        
-        # Update event timestamp if no errors
-        if not errors:
-            current_data['events'][0]['timestamp'] = (
-                current_data['capture_timestamp']['capture_start_on_original_metadata_timestamp'] +
-                int(current_data['capture_timestamp']['capture_start_time_offset_seconds'])
-            )
-            # Re-search GPX files if timestamp changed
+                start_ms = int(ev['timestamp_start_ms'])
+                end_ms = int(ev['timestamp_end_ms'])
+            except (KeyError, ValueError, TypeError):
+                errors['events'] = 'Invalid timestamp'
+                break
+            if end_ms < start_ms:
+                errors['events'] = 'End time must not be before start time'
+                break
+            new_user_events.append({
+                'event_id': int(ev.get('event_id', int(time.time() * 1000))),
+                'event_type': event_type,
+                'time_mode': time_mode,
+                'timestamp_start_ms': start_ms,
+                'timestamp_end_ms': end_ms,
+                'text': str(ev.get('text', ''))
+            })
+        if 'events' not in errors:
+            current_data['events'] = preserved + new_user_events
             try_gpx_files(current_data, current_image_path)
-
-    # Update events
-    if 'events' in updates and len(updates['events']) > 0:
-        if 'timestamp_accuracy_seconds' in updates['events'][0]:
-            try:
-                accuracy = float(updates['events'][0]['timestamp_accuracy_seconds'])
-                current_data['events'][0]['timestamp_accuracy_seconds'] = accuracy
-            except (ValueError, TypeError):
-                errors['timestamp_accuracy_seconds'] = 'Must be a valid number'
 
     # Update geolocation
     if 'geolocation_data' in updates:
