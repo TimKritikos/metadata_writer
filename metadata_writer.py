@@ -30,9 +30,12 @@
 #   GREY: recorded as not recorded
 
 import sys
+import argparse
+import gzip
 import hashlib
 import json
 import os
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -53,6 +56,7 @@ app = Flask(__name__)
 current_data = {}
 current_image_path = None
 session_key = None
+gramps_people = []
 
 def sha512Checksum(filePath):
     with open(filePath, 'rb') as fh:
@@ -155,6 +159,11 @@ def load_image_metadata(image_path):
         "constants": {
             "image_sha512": sha512Checksum(image_path),
             "image_file_full_path": os.path.realpath(image_path)
+        },
+        "subjects": {
+            "gramps_file_path": "",
+            "gramps_file_sha512": "",
+            "list": []
         }
     }
 
@@ -292,6 +301,46 @@ def try_gpx_files(data, image_path):
     data["geolocation_data"]["source_gnss_track_file"]["file_type"] = ""
     data["geolocation_data"]["source_gnss_track_file"]["have_data"] = False
     return
+
+def load_gramps_people(file_path):
+    """Load people from a Gramps gzipped XML export (.gramps) file."""
+    people = []
+    try:
+        with gzip.open(file_path, 'rb') as f:
+            tree = ET.parse(f)
+        root = tree.getroot()
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag[:root.tag.index('}') + 1]
+        for person_el in root.iter(f'{ns}person'):
+            gramps_id = person_el.get('id', '')
+            if not gramps_id:
+                continue
+            name_el = None
+            for n in person_el.findall(f'{ns}name'):
+                if n.get('type', '') == 'Birth Name':
+                    name_el = n
+                    break
+            if name_el is None:
+                name_el = person_el.find(f'{ns}name')
+            if name_el is not None:
+                first = (name_el.findtext(f'{ns}first') or '').strip()
+                surname_el = name_el.find(f'.//{ns}surname')
+                surname = ((surname_el.text or '').strip()) if surname_el is not None else ''
+                full_name = ' '.join(filter(None, [first, surname])) or gramps_id
+            else:
+                full_name = gramps_id
+            people.append({'id': gramps_id, 'name': full_name})
+    except Exception as e:
+        print(f"Warning: Could not load Gramps file: {e}")
+    return sorted(people, key=lambda p: p['name'].lower())
+
+
+@app.route('/api/gramps/people')
+def get_gramps_people():
+    """Return people loaded from the Gramps database"""
+    return jsonify({"people": gramps_people})
+
 
 @app.route('/')
 def index():
@@ -493,6 +542,33 @@ def update_metadata():
                     except (ValueError, TypeError, ZeroDivisionError):
                         errors['shutter_speed'] = 'Must be a valid number or fraction (e.g. 1/125)'
 
+    # Update subjects (people in photo)
+    if 'subjects' in updates and 'list' in updates['subjects']:
+        validated_people = []
+        for person in updates['subjects']['list']:
+            if not isinstance(person, dict):
+                continue
+            gramps_id = str(person.get('gramps_id', ''))
+            name = str(person.get('name', ''))
+            bb = person.get('face_bounding_box')
+            validated_bb = None
+            if isinstance(bb, dict):
+                try:
+                    x = float(bb['x'])
+                    y = float(bb['y'])
+                    w = float(bb['w'])
+                    h = float(bb['h'])
+                    if 0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1:
+                        validated_bb = {'x': x, 'y': y, 'w': w, 'h': h}
+                except (KeyError, ValueError, TypeError):
+                    pass
+            validated_people.append({
+                'gramps_id': gramps_id,
+                'name': name,
+                'face_bounding_box': validated_bb
+            })
+        current_data['subjects']['list'] = validated_people
+
     if errors:
         return jsonify({"success": False, "errors": errors, "data": current_data})
     else:
@@ -539,23 +615,36 @@ def get_image_full():
     return send_file(current_image_path)
 
 def main():
-    global current_data, current_image_path, session_key
+    global current_data, current_image_path, session_key, gramps_people
 
-    if len(sys.argv) < 2:
-        print("Usage: python web_metadata_writer.py path_to_image")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Metadata Writer')
+    parser.add_argument('image_path', help='Path to image file')
+    parser.add_argument('--gramps', metavar='FILE',
+                        help='Gramps XML export file (.gramps) for people tagging')
+    args = parser.parse_args()
 
-    current_image_path = sys.argv[1]
+    current_image_path = args.image_path
 
     if not os.path.exists(current_image_path):
         print(f"Error: Image file not found: {current_image_path}")
         sys.exit(1)
+
+    if args.gramps:
+        if not os.path.exists(args.gramps):
+            print(f"Error: Gramps file not found: {args.gramps}")
+            sys.exit(1)
+        gramps_people = load_gramps_people(args.gramps)
+        print(f"Loaded {len(gramps_people)} people from Gramps file: {args.gramps}")
 
     # Generate unique session key for this server instance
     session_key = secrets.token_hex(16)
 
     print(f"Loading metadata for: {current_image_path}")
     current_data = load_image_metadata(current_image_path)
+
+    if args.gramps:
+        current_data['subjects']['gramps_file_path'] = os.path.realpath(args.gramps)
+        current_data['subjects']['gramps_file_sha512'] = sha512Checksum(args.gramps)
 
     print("\nStarting web server...")
     print("Open your browser to: http://localhost:5000")

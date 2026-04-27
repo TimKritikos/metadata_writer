@@ -491,6 +491,149 @@
             font-size: 12px;
         }
 
+        /* People widget */
+        #imageWrapper {
+            position: relative;
+            display: block;
+            width: 100%;
+        }
+
+        #bboxCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .bbox-draw-hint {
+            display: none;
+            background: #007bff;
+            color: white;
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 0 0 4px 4px;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+
+        .people-search-wrapper {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .people-search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+            z-index: 500;
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .people-search-item {
+            padding: 7px 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .people-search-item:hover {
+            background: #f0f7ff;
+        }
+
+        .people-search-name { flex: 1; }
+
+        .people-search-id {
+            font-size: 11px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .person-card {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            background: #fafafa;
+        }
+
+        .person-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .person-name {
+            font-weight: 500;
+            font-size: 14px;
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .person-id {
+            font-size: 11px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .person-bb-badge {
+            font-size: 11px;
+            background: #d4edda;
+            color: #155724;
+            border-radius: 3px;
+            padding: 1px 5px;
+            flex-shrink: 0;
+        }
+
+        .button-small {
+            padding: 3px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .button-small:hover { background: #e9ecef; }
+
+        .button-small-danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .button-small-danger:hover { background: #f8d7da; }
+
+        .people-no-gramps {
+            color: #888;
+            font-size: 13px;
+            font-style: italic;
+            padding: 6px 0;
+        }
+
+        .people-no-gramps code {
+            font-style: normal;
+            background: #f0f0f0;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
     </style>
 </head>
 <body>
@@ -518,7 +661,11 @@
         <div class="left-column">
             <div class="section">
                 <div class="section-title">Image</div>
-                <img id="imagePreview" class="image-preview" alt="Image preview" onclick="openLightbox()">
+                <div id="imageWrapper">
+                    <img id="imagePreview" class="image-preview" alt="Image preview" onclick="openLightbox()">
+                    <canvas id="bboxCanvas"></canvas>
+                </div>
+                <div class="bbox-draw-hint" id="bboxDrawHint"></div>
             </div>
             
             <div class="section">
@@ -544,7 +691,16 @@
             </div>
             
             <div class="section">
-                <div class="section-title"><span class="section-number">5</span>Save</div>
+                <div class="section-title"><span class="section-number">5</span>Subjects</div>
+                <div class="people-search-wrapper">
+                    <input type="text" id="peopleSearch" placeholder="Search by name or Gramps ID..." oninput="onPeopleSearch()" autocomplete="off">
+                    <div id="peopleSearchDropdown" class="people-search-dropdown"></div>
+                </div>
+                <div id="peopleList"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title"><span class="section-number">6</span>Save</div>
                 <div class="save-section">
                     <button class="button button-primary" onclick="saveMetadata()">Write and Exit</button>
                 </div>
@@ -850,11 +1006,14 @@
         async function loadData() {
             setProcessing(true);
             try {
-                const response = await fetch('/api/metadata');
-                if (!response.ok) {
+                const [metaResponse] = await Promise.all([
+                    fetch('/api/metadata'),
+                    loadGrampsPeople()
+                ]);
+                if (!metaResponse.ok) {
                     throw new Error('Failed to load metadata');
                 }
-                const result = await response.json();
+                const result = await metaResponse.json();
                 metadata = result.data;
                 sessionKey = result.session_key;
                 const firstExifEv = (metadata.events || []).find(
@@ -862,11 +1021,13 @@
                 );
                 if (firstExifEv) cachedExifTimestamp = firstExifEv.time.provenance.exif_timestamp;
                 updateUI();
-                
+
                 // Load image
                 const imgResponse = await fetch('/api/image');
                 const imgData = await imgResponse.json();
-                document.getElementById('imagePreview').src = imgData.image;
+                const imgEl = document.getElementById('imagePreview');
+                imgEl.onload = redrawBBoxCanvas;
+                imgEl.src = imgData.image;
             } catch (error) {
                 alert('Failed to connect to server. Please check if the server is running and reload the page.');
                 document.querySelectorAll('input, textarea, select, button').forEach(el => el.disabled = true);
@@ -914,9 +1075,12 @@
             document.getElementById('sha512').textContent = metadata.constants.image_sha512;
             document.getElementById('programVersion').textContent = metadata.program_version;
             document.getElementById('dataSpecVersion').textContent = metadata.data_spec_version;
-            
+
             // Geo-source highlight
             updateGeoSourceHighlight();
+
+            // People
+            renderPeopleWidget();
 
             // Timeline
             updateTimeline();
@@ -2122,6 +2286,273 @@
             });
         }
 
+        // ── People Widget ─────────────────────────────────────────────────────
+        let grampsPeople = [];
+        let bbDrawState = null; // {personIndex, x0, y0, x1, y1, drawing}
+
+        async function loadGrampsPeople() {
+            try {
+                const resp = await fetch('/api/gramps/people');
+                const data = await resp.json();
+                grampsPeople = data.people || [];
+            } catch (e) {
+                grampsPeople = [];
+            }
+        }
+
+        function renderPeopleWidget() {
+            const list = document.getElementById('peopleList');
+            list.innerHTML = '';
+            const people = metadata.subjects?.list || [];
+            if (people.length === 0 && grampsPeople.length === 0) {
+                const note = document.createElement('p');
+                note.className = 'people-no-gramps';
+                note.innerHTML = 'No Gramps file loaded. Start with <code>--gramps path/to/export.gramps</code>';
+                list.appendChild(note);
+            }
+            people.forEach((p, i) => list.appendChild(renderPersonCard(p, i)));
+            redrawBBoxCanvas();
+        }
+
+        function renderPersonCard(person, index) {
+            const colors = ['#e74c3c','#2980b9','#27ae60','#8e44ad','#e67e22','#16a085','#c0392b','#2c3e50'];
+            const color = colors[index % colors.length];
+
+            const card = document.createElement('div');
+            card.className = 'person-card';
+            card.style.borderLeft = `3px solid ${color}`;
+
+            const info = document.createElement('div');
+            info.className = 'person-info';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'person-name';
+            nameSpan.textContent = person.name;
+            const idSpan = document.createElement('span');
+            idSpan.className = 'person-id';
+            idSpan.textContent = person.gramps_id;
+            info.append(nameSpan, idSpan);
+
+            if (person.face_bounding_box) {
+                const badge = document.createElement('span');
+                badge.className = 'person-bb-badge';
+                const fbb = person.face_bounding_box;
+                badge.title = `x:${fbb.x.toFixed(3)} y:${fbb.y.toFixed(3)} w:${fbb.w.toFixed(3)} h:${fbb.h.toFixed(3)}`;
+                badge.textContent = 'face';
+                info.appendChild(badge);
+            }
+
+            const bbBtn = document.createElement('button');
+            bbBtn.className = 'button-small';
+            bbBtn.textContent = person.face_bounding_box ? 'Edit region' : 'Set region';
+            bbBtn.onclick = () => startBBoxDraw(index);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'button-small button-small-danger';
+            removeBtn.textContent = '\u00d7';
+            removeBtn.title = 'Remove person';
+            removeBtn.onclick = () => {
+                const people = metadata.subjects?.list || [];
+                people.splice(index, 1);
+                if (!metadata.subjects) metadata.subjects = {};
+                metadata.subjects.list = people;
+                savePeopleToServer();
+            };
+
+            card.append(info, bbBtn, removeBtn);
+            return card;
+        }
+
+        function onPeopleSearch() {
+            const query = document.getElementById('peopleSearch').value.toLowerCase().trim();
+            const dropdown = document.getElementById('peopleSearchDropdown');
+            if (!query) { dropdown.style.display = 'none'; return; }
+            const alreadyAdded = new Set((metadata.subjects?.list || []).map(p => p.gramps_id));
+            const results = grampsPeople.filter(p =>
+                !alreadyAdded.has(p.id) &&
+                (p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query))
+            ).slice(0, 10);
+            if (results.length === 0) { dropdown.style.display = 'none'; return; }
+            dropdown.innerHTML = '';
+            results.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'people-search-item';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'people-search-name';
+                nameEl.textContent = p.name;
+                const idEl = document.createElement('span');
+                idEl.className = 'people-search-id';
+                idEl.textContent = p.id;
+                item.append(nameEl, idEl);
+                item.onmousedown = e => {
+                    e.preventDefault(); // keep focus from leaving input
+                    const people = metadata.subjects?.list || [];
+                    people.push({ gramps_id: p.id, name: p.name, face_bounding_box: null });
+                    if (!metadata.subjects) metadata.subjects = {};
+                    metadata.subjects.list = people;
+                    document.getElementById('peopleSearch').value = '';
+                    dropdown.style.display = 'none';
+                    savePeopleToServer();
+                };
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = 'block';
+        }
+
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.people-search-wrapper')) {
+                const dd = document.getElementById('peopleSearchDropdown');
+                if (dd) dd.style.display = 'none';
+            }
+        });
+
+        async function savePeopleToServer() {
+            if (isProcessing) return;
+            setProcessing(true);
+            try {
+                const response = await fetch('/api/metadata', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_key: sessionKey,
+                        subjects: { list: metadata.subjects?.list || [] }
+                    })
+                });
+                if (!response.ok) {
+                    const result = await response.json();
+                    if (handleApiError(null, result)) return;
+                    throw new Error('Server error');
+                }
+                const result = await response.json();
+                if (result.success) {
+                    metadata = result.data;
+                } else {
+                    if (handleApiError(null, result)) return;
+                }
+            } catch (error) {
+                alert('Failed to save people changes.');
+            } finally {
+                setProcessing(false);
+            }
+            renderPeopleWidget();
+        }
+
+        // ── Bounding Box Drawing ───────────────────────────────────────────────
+        function redrawBBoxCanvas() {
+            const canvas = document.getElementById('bboxCanvas');
+            const img = document.getElementById('imagePreview');
+            if (!img.clientWidth) return;
+            canvas.width = img.clientWidth;
+            canvas.height = img.clientHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const colors = ['#e74c3c','#2980b9','#27ae60','#8e44ad','#e67e22','#16a085','#c0392b','#2c3e50'];
+            const people = metadata.subjects?.list || [];
+            people.forEach((p, i) => {
+                if (!p.face_bounding_box) return;
+                const bb = p.face_bounding_box;
+                const x = bb.x * canvas.width;
+                const y = bb.y * canvas.height;
+                const w = bb.w * canvas.width;
+                const h = bb.h * canvas.height;
+                const color = colors[i % colors.length];
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, w, h);
+                ctx.font = 'bold 11px -apple-system, sans-serif';
+                const labelW = ctx.measureText(p.name).width + 8;
+                const labelY = y > 18 ? y - 17 : y + h + 2;
+                ctx.fillStyle = color;
+                ctx.fillRect(x, labelY, labelW, 15);
+                ctx.fillStyle = 'white';
+                ctx.fillText(p.name, x + 4, labelY + 11);
+            });
+            if (bbDrawState && bbDrawState.drawing) {
+                const x = Math.min(bbDrawState.x0, bbDrawState.x1);
+                const y = Math.min(bbDrawState.y0, bbDrawState.y1);
+                const w = Math.abs(bbDrawState.x1 - bbDrawState.x0);
+                const h = Math.abs(bbDrawState.y1 - bbDrawState.y0);
+                ctx.strokeStyle = '#007bff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 3]);
+                ctx.strokeRect(x, y, w, h);
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(0,123,255,0.1)';
+                ctx.fillRect(x, y, w, h);
+            }
+        }
+
+        function startBBoxDraw(personIndex) {
+            const canvas = document.getElementById('bboxCanvas');
+            const img = document.getElementById('imagePreview');
+            canvas.width = img.clientWidth;
+            canvas.height = img.clientHeight;
+            canvas.style.pointerEvents = 'auto';
+            canvas.style.cursor = 'crosshair';
+            const name = (metadata.subjects?.list || [])[personIndex]?.name || '';
+            const hint = document.getElementById('bboxDrawHint');
+            hint.textContent = `Drawing region for "${name}" \u2014 drag to select, Escape to cancel`;
+            hint.style.display = 'block';
+            bbDrawState = { personIndex, x0: 0, y0: 0, x1: 0, y1: 0, drawing: false };
+            img.onclick = null;
+            redrawBBoxCanvas();
+        }
+
+        function stopBBoxDraw() {
+            const canvas = document.getElementById('bboxCanvas');
+            canvas.style.pointerEvents = 'none';
+            canvas.style.cursor = '';
+            document.getElementById('bboxDrawHint').style.display = 'none';
+            bbDrawState = null;
+            document.getElementById('imagePreview').onclick = openLightbox;
+            redrawBBoxCanvas();
+        }
+
+        (function () {
+            const canvas = document.getElementById('bboxCanvas');
+            canvas.addEventListener('mousedown', e => {
+                if (!bbDrawState) return;
+                const rect = canvas.getBoundingClientRect();
+                bbDrawState.x0 = e.clientX - rect.left;
+                bbDrawState.y0 = e.clientY - rect.top;
+                bbDrawState.x1 = bbDrawState.x0;
+                bbDrawState.y1 = bbDrawState.y0;
+                bbDrawState.drawing = true;
+                e.preventDefault();
+            });
+            canvas.addEventListener('mousemove', e => {
+                if (!bbDrawState || !bbDrawState.drawing) return;
+                const rect = canvas.getBoundingClientRect();
+                bbDrawState.x1 = e.clientX - rect.left;
+                bbDrawState.y1 = e.clientY - rect.top;
+                redrawBBoxCanvas();
+            });
+            canvas.addEventListener('mouseup', e => {
+                if (!bbDrawState || !bbDrawState.drawing) return;
+                const rect = canvas.getBoundingClientRect();
+                bbDrawState.x1 = e.clientX - rect.left;
+                bbDrawState.y1 = e.clientY - rect.top;
+                const x = Math.min(bbDrawState.x0, bbDrawState.x1);
+                const y = Math.min(bbDrawState.y0, bbDrawState.y1);
+                const w = Math.abs(bbDrawState.x1 - bbDrawState.x0);
+                const h = Math.abs(bbDrawState.y1 - bbDrawState.y0);
+                if (w > 5 && h > 5) {
+                    const people = metadata.subjects?.list || [];
+                    if (people[bbDrawState.personIndex]) {
+                        people[bbDrawState.personIndex].face_bounding_box = {
+                            x: x / canvas.width,
+                            y: y / canvas.height,
+                            w: w / canvas.width,
+                            h: h / canvas.height
+                        };
+                        if (!metadata.subjects) metadata.subjects = {};
+                        metadata.subjects.list = people;
+                        savePeopleToServer();
+                    }
+                }
+                stopBBoxDraw();
+            });
+        })();
+
         // ── Lightbox ──────────────────────────────────────────────────────────
         let lbScale = 1, lbX = 0, lbY = 0;
         let lbDragging = false, lbMoved = false;
@@ -2219,6 +2650,7 @@
             });
 
             document.addEventListener('keydown', e => {
+                if (e.key === 'Escape' && bbDrawState) { stopBBoxDraw(); return; }
                 if (!overlay.classList.contains('active')) return;
                 if (e.key === 'Escape') closeLightbox();
                 else if (e.key === '+' || e.key === '=') lbZoomBtn(1);
